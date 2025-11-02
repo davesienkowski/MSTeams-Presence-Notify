@@ -1,0 +1,2 @@
+D:\Repos\MSTeams-Presence-Notify\TeamsBLETransmitter.pdb
+D:\Repos\MSTeams-Presence-Notify\TeamsBLETransmitter.exe

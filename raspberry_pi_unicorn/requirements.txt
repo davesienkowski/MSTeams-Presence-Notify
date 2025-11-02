@@ -1,0 +1,10 @@
+# Python dependencies for Raspberry Pi Unicorn HAT Teams Status Display
+
+# Unicorn HAT library (Pimoroni)
+unicornhat>=2.3.0
+
+# HTTP requests
+requests>=2.31.0
+
+# Note: unicornhat requires rpi_ws281x which is installed automatically
+# Additional system packages may be needed (see RASPBERRY_PI_SETUP.md)

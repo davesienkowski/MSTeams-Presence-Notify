@@ -1,0 +1,19 @@
+# MS Teams Presence Notification Light - Python Dependencies
+
+# Microsoft Graph API Authentication
+msal==1.26.0
+requests==2.31.0
+
+# Web Server for PyPortal communication
+flask==3.0.0
+flask-cors==4.0.0
+
+# Configuration and Environment
+python-dotenv==1.0.0
+
+# Utilities
+colorama==0.4.6
+
+# Development
+pytest==7.4.3
+black==23.12.1
