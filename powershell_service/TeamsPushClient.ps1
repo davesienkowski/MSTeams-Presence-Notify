@@ -3,14 +3,16 @@
 # Architecture: Work PC (client) → Raspberry Pi (server)
 
 param(
-    [string]$RaspberryPiIP = "192.168.1.150",  # Change to your Raspberry Pi's IP
+    [string]$RaspberryPiIP = "192.168.50.137",  # Change to your Raspberry Pi's IP
     [int]$Port = 8080,
     [int]$PollInterval = 5  # Seconds between status checks
 )
 
 # Teams log file locations
-$TeamsLogsPath = "$env:APPDATA\Microsoft\Teams\logs.txt"
-$OldTeamsLogsPath = "$env:USERPROFILE\AppData\Roaming\Microsoft\Teams\logs.txt"
+# New Teams (Microsoft Teams 2.0)
+$NewTeamsLogPath = "$env:LOCALAPPDATA\Packages\MSTeams_8wekyb3d8bbwe\LocalCache\Microsoft\MSTeams\Logs\"
+# Classic Teams
+$ClassicTeamsLogPath = "$env:APPDATA\Microsoft\Teams\logs.txt"
 
 # Status mapping
 $StatusColors = @{
@@ -43,12 +45,19 @@ function Write-Log {
 }
 
 function Get-TeamsLogPath {
-    # Try new Teams first, then old Teams
-    if (Test-Path $TeamsLogsPath) {
-        return $TeamsLogsPath
+    # Try New Teams first (returns directory path)
+    if (Test-Path $NewTeamsLogPath) {
+        return @{
+            Path = $NewTeamsLogPath
+            IsNewTeams = $true
+        }
     }
-    elseif (Test-Path $OldTeamsLogsPath) {
-        return $OldTeamsLogsPath
+    # Fall back to Classic Teams (returns file path)
+    elseif (Test-Path $ClassicTeamsLogPath) {
+        return @{
+            Path = $ClassicTeamsLogPath
+            IsNewTeams = $false
+        }
     }
     else {
         return $null
@@ -56,9 +65,9 @@ function Get-TeamsLogPath {
 }
 
 function Get-TeamsStatus {
-    $logPath = Get-TeamsLogPath
+    $logInfo = Get-TeamsLogPath
 
-    if (-not $logPath) {
+    if (-not $logInfo) {
         Write-Log "Teams log file not found. Is Teams running?" -Level "WARN"
         return @{
             Availability = "Unknown"
@@ -67,51 +76,136 @@ function Get-TeamsStatus {
     }
 
     try {
-        # Read last 5000 lines for better status detection
-        $logContent = Get-Content $logPath -Tail 5000 -ErrorAction Stop
-
-        # Parse status from log patterns
         $availability = "Unknown"
         $activity = "Unknown"
+        $logContent = @()  # Initialize as array, not string
 
-        # Look for StatusIndicatorStateService messages
-        $statusLines = $logContent | Where-Object { $_ -match "StatusIndicatorStateService|SetBadge|NotifyCall" }
+        if ($logInfo.IsNewTeams) {
+            # New Teams: Read from the SINGLE most recent MSTeams_*.log file only
+            $logFiles = Get-ChildItem -Path $logInfo.Path -Filter "MSTeams_*.log" -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -notmatch "Update|SlimCore|Launcher" } |
+                        Sort-Object LastWriteTime -Descending |
+                        Select-Object -First 1  # Only read the newest file
 
-        if ($statusLines) {
-            # Get most recent status
-            $recentStatus = $statusLines | Select-Object -Last 10
+            if ($logFiles) {
+                $newestFile = $logFiles[0]
+                Write-Verbose "Reading from log file: $($newestFile.Name) (Modified: $($newestFile.LastWriteTime))" -Verbose
+                # Read more lines to get more recent status entries
+                $logContent = Get-Content $newestFile.FullName -Tail 5000 -ErrorAction SilentlyContinue
+                Write-Verbose "Total lines read: $($logContent.Count)" -Verbose
+            } else {
+                Write-Verbose "No MSTeams log files found!" -Verbose
+            }
+        }
+        else {
+            # Classic Teams: Read from logs.txt
+            $logContent = Get-Content $logInfo.Path -Tail 5000 -ErrorAction Stop
+        }
 
-            foreach ($line in $recentStatus) {
-                # Available
-                if ($line -match "Setting the taskbar overlay icon - Available|NewActivity: Available") {
-                    $availability = "Available"
-                    $activity = "Available"
+        if ($logContent.Count -gt 0) {
+            # Look for New Teams or Classic Teams status patterns
+            $statusLines = $logContent | Where-Object {
+                $_ -match "UserDataCrossCloudModule|UserPresenceAction|SetBadge.*status|StatusIndicatorStateService|NewActivity"
+            }
+
+            if ($statusLines) {
+                # Get most recent status - take LAST 50 (most recent entries from the tail)
+                # Ensure it's an array even if there's only one line
+                $recentStatus = @($statusLines | Select-Object -Last 50)
+
+                Write-Verbose "Found $($recentStatus.Count) status-related lines" -Verbose
+
+                # Show the LAST few lines for debugging (most recent)
+                if ($recentStatus.Count -gt 0) {
+                    Write-Verbose "Sample of most recent status lines:" -Verbose
+                    $samplesToShow = [Math]::Min(3, $recentStatus.Count)
+                    # Show from end of array (most recent)
+                    for ($j = 0; $j -lt $samplesToShow; $j++) {
+                        $sampleLine = $recentStatus[$recentStatus.Count - 1 - $j]
+                        # Extract timestamp from line
+                        if ($sampleLine -match "^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})") {
+                            $timestamp = $Matches[1]
+                        } else {
+                            $timestamp = "No timestamp"
+                        }
+                        $linePreview = if ($sampleLine.Length -gt 150) { $sampleLine.Substring(0, 150) } else { $sampleLine }
+                        Write-Verbose "  [$timestamp] $linePreview" -Verbose
+                    }
                 }
-                # Busy / In a Meeting / In a Call
-                elseif ($line -match "NewActivity: (InAMeeting|InACall|Busy)") {
-                    $match = $Matches[1]
-                    $availability = $match
-                    $activity = $match
-                }
-                # Away
-                elseif ($line -match "NewActivity: Away|Setting the taskbar overlay icon - Away") {
-                    $availability = "Away"
-                    $activity = "Away"
-                }
-                # Be Right Back
-                elseif ($line -match "NewActivity: BeRightBack") {
-                    $availability = "BeRightBack"
-                    $activity = "BeRightBack"
-                }
-                # Do Not Disturb
-                elseif ($line -match "NewActivity: (DoNotDisturb|Presenting)") {
-                    $availability = "DoNotDisturb"
-                    $activity = "DoNotDisturb"
-                }
-                # Offline
-                elseif ($line -match "NewActivity: Offline") {
-                    $availability = "Offline"
-                    $activity = "Offline"
+
+                # Process in reverse order to get the most recent status first
+                for ($i = $recentStatus.Count - 1; $i -ge 0; $i--) {
+                    $line = $recentStatus[$i]
+
+                    # New Teams patterns: UserDataCrossCloudModule or UserPresenceAction
+                    # Must have "availability:" followed by a status keyword
+                    if ($line -match "availability:\s*(Available|Busy|Away|BeRightBack|DoNotDisturb|Offline)[\s,}]") {
+                        if ($availability -eq "Unknown") {
+                            $availability = $Matches[1]
+                            $activity = $Matches[1]
+                            Write-Verbose "Matched availability pattern: $($Matches[1])" -Verbose
+                            Write-Verbose "From line: $($line.Substring(0, [Math]::Min(150, $line.Length)))" -Verbose
+                        }
+                    }
+                    # New Teams patterns: SetBadge status
+                    # Must have "status " followed by a status keyword (with word boundary)
+                    elseif ($line -match "status\s+(Available|Busy|Away|BeRightBack|DoNotDisturb|Offline)[\s,]") {
+                        if ($availability -eq "Unknown") {
+                            $availability = $Matches[1]
+                            $activity = $Matches[1]
+                            Write-Verbose "Matched status pattern: $($Matches[1])" -Verbose
+                            Write-Verbose "From line: $($line.Substring(0, [Math]::Min(150, $line.Length)))" -Verbose
+                        }
+                    }
+                    # Classic Teams patterns (fallback for older Teams)
+                    elseif ($line -match "Setting the taskbar overlay icon - Available|NewActivity: Available") {
+                        if ($availability -eq "Unknown") {
+                            $availability = "Available"
+                            $activity = "Available"
+                            Write-Verbose "Matched Classic Teams Available pattern" -Verbose
+                        }
+                    }
+                    elseif ($line -match "NewActivity: (InAMeeting|InACall|Busy)") {
+                        if ($availability -eq "Unknown") {
+                            $match = $Matches[1]
+                            $availability = $match
+                            $activity = $match
+                            Write-Verbose "Matched Classic Teams activity pattern: $match" -Verbose
+                        }
+                    }
+                    elseif ($line -match "NewActivity: Away|Setting the taskbar overlay icon - Away") {
+                        if ($availability -eq "Unknown") {
+                            $availability = "Away"
+                            $activity = "Away"
+                            Write-Verbose "Matched Classic Teams Away pattern" -Verbose
+                        }
+                    }
+                    elseif ($line -match "NewActivity: BeRightBack") {
+                        if ($availability -eq "Unknown") {
+                            $availability = "BeRightBack"
+                            $activity = "BeRightBack"
+                            Write-Verbose "Matched Classic Teams BeRightBack pattern" -Verbose
+                        }
+                    }
+                    elseif ($line -match "NewActivity: (DoNotDisturb|Presenting)") {
+                        if ($availability -eq "Unknown") {
+                            $availability = "DoNotDisturb"
+                            $activity = "DoNotDisturb"
+                            Write-Verbose "Matched Classic Teams DND pattern" -Verbose
+                        }
+                    }
+                    elseif ($line -match "NewActivity: Offline") {
+                        if ($availability -eq "Unknown") {
+                            $availability = "Offline"
+                            $activity = "Offline"
+                            Write-Verbose "Matched Classic Teams Offline pattern" -Verbose
+                        }
+                    }
+
+                    # Stop once we've found a status
+                    if ($availability -ne "Unknown") {
+                        break
+                    }
                 }
             }
         }
@@ -205,6 +299,7 @@ while ($true) {
     try {
         # Get current Teams status
         $status = Get-TeamsStatus
+        Write-Verbose "Retrieved status: $($status.Availability)" -Verbose
 
         # Check if status changed
         if ($status.Availability -ne $script:LastStatus -or $status.Activity -ne $script:LastActivity) {
@@ -212,6 +307,7 @@ while ($true) {
 
             # Send update to Raspberry Pi
             if (Send-StatusUpdate -Availability $status.Availability -Activity $status.Activity) {
+                Write-Log "Update sent successfully" -Level "SUCCESS"
                 $script:LastStatus = $status.Availability
                 $script:LastActivity = $status.Activity
                 $consecutiveErrors = 0
@@ -219,6 +315,9 @@ while ($true) {
             else {
                 $consecutiveErrors++
             }
+        }
+        else {
+            Write-Verbose "Status unchanged: $($status.Availability)" -Verbose
         }
 
         # Check for too many consecutive errors
@@ -228,10 +327,14 @@ while ($true) {
         }
 
         # Wait before next check
+        Write-Verbose "Waiting $PollInterval seconds before next check..." -Verbose
         Start-Sleep -Seconds $PollInterval
+        Write-Verbose "Loop iteration complete, starting next check..." -Verbose
     }
     catch {
         Write-Log "Unexpected error: $_" -Level "ERROR"
+        Write-Log "Error details: $($_.Exception.Message)" -Level "ERROR"
+        Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level "ERROR"
         Start-Sleep -Seconds $PollInterval
     }
 }

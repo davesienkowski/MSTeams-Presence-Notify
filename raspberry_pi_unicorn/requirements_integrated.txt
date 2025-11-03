@@ -1,0 +1,21 @@
+# MS Teams Presence - Integrated Solution Requirements
+# For Raspberry Pi + Unicorn HAT with mobile integration
+
+# LED Matrix Control
+unicornhat==2.2.3
+
+# HTTP Client for fetching status
+requests==2.31.0
+
+# Web Dashboard
+flask==3.0.0
+flask-cors==4.0.0
+
+# Home Assistant MQTT Integration
+paho-mqtt==1.6.1
+
+# Configuration Management
+pyyaml==6.0.1
+
+# Color manipulation (already used in unicorn animations)
+# No additional package needed - uses built-in colorsys
