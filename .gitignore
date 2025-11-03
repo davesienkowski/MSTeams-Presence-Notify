@@ -56,3 +56,15 @@ htmlcov/
 # Serena
 .serena/
 nul
+
+# Configuration files (may contain IP addresses, passwords, etc.)
+config.yaml
+config_push.yaml
+**/config.yaml
+**/config_push.yaml
+*.yaml.backup
+*.yaml.local
+
+# Status data
+current_status.json
+status_history.json

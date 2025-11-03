@@ -7,7 +7,7 @@
 server:
   # URL of your Windows PC running the PowerShell status server
   # Replace YOUR_PC_IP with your actual PC IP address (e.g., 192.168.1.100)
-  url: "http://YOUR_PC_IP:8080/status"
+  url: "http://192.168.50.137:8080/status"
 
   # How often to poll for status updates (in seconds)
   poll_interval: 5
