@@ -1,7 +1,7 @@
 # Python dependencies for Raspberry Pi Unicorn HAT Teams Status Display
 
 # Unicorn HAT library (Pimoroni)
-unicornhat>=2.3.0
+unicornhat>=2.2.3
 
 # HTTP requests
 requests>=2.31.0
