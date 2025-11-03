@@ -1,0 +1,70 @@
+# MS Teams Presence - Integrated Configuration (PUSH Architecture)
+# Work PC pushes status → Raspberry Pi receives and displays
+
+# ============================================================================
+# STATUS SERVER (RECEIVES FROM WORK PC)
+# ============================================================================
+server:
+  # Port to listen on for incoming status updates from work PC
+  # Work PC (TeamsPushClient.ps1) will POST to: http://192.168.50.137:8080/status
+  port: 8080
+
+# ============================================================================
+# UNICORN HAT LED DISPLAY
+# ============================================================================
+unicorn:
+  # LED brightness (0.0 to 1.0)
+  brightness: 0.5
+
+  # Animation mode for status display
+  # Options: solid, pulse, gradient, ripple, spinner
+  animation_mode: "ripple"
+
+# ============================================================================
+# WEB DASHBOARD (Mobile Viewing)
+# ============================================================================
+web:
+  # Enable/disable web dashboard
+  enabled: true
+
+  # Web server settings
+  host: "0.0.0.0"
+  port: 5000
+
+  # Access your dashboard at: http://192.168.50.137:5000
+
+# ============================================================================
+# PUSH NOTIFICATIONS (via ntfy.sh)
+# ============================================================================
+notifications:
+  # Enable/disable push notifications
+  enabled: true
+
+  # ntfy.sh topic name (MUST BE UNIQUE!)
+  # CHANGE THIS! Add your name and random numbers to avoid conflicts
+  # Bad:  myteamspresence (too common, you'll get others' notifications)
+  # Good: myteamspresence_yourname_98765
+  ntfy_topic: "myteamspresence"
+
+  # ntfy.sh server URL
+  ntfy_server: "https://ntfy.sh"
+
+  # Only send notifications when status changes (recommended)
+  only_on_change: true
+
+# ============================================================================
+# HOME ASSISTANT INTEGRATION (via MQTT)
+# ============================================================================
+homeassistant:
+  # Enable/disable Home Assistant integration
+  enabled: false
+
+  # MQTT broker connection details
+  mqtt_broker: "192.168.50.137"
+  mqtt_port: 1883
+  mqtt_username: ""
+  mqtt_password: ""
+
+  # MQTT topics (usually don't change these)
+  mqtt_topic: "homeassistant/sensor/teams_presence"
+  discovery_prefix: "homeassistant"
