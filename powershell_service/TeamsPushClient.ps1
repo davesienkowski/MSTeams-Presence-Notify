@@ -1,6 +1,6 @@
 # MS Teams Status Push Client
 # Monitors Teams logs and pushes status updates to Raspberry Pi at home
-# Architecture: Work PC (client) → Raspberry Pi (server)
+# Architecture: Work PC (client) -> Raspberry Pi (server)
 
 param(
     [string]$RaspberryPiIP = "192.168.50.137",  # Change to your Raspberry Pi's IP
@@ -52,47 +52,140 @@ $StatusDisplayColor = @{
     "Unknown" = "White"
 }
 
+# Script state
 $script:LastStatus = $null
 $script:LastActivity = $null
 $script:VerboseMode = $Verbose
 $script:ConnectionStatus = "Unknown"
 $script:LastSuccessfulSend = $null
+$script:UpdateCount = 0
+$script:StatusHistory = @()
+$script:MaxHistory = 5
+
+# UI Layout positions (row numbers)
+$script:CurrentStatusRow = 0
+$script:HistoryStartRow = 0
+$script:ConnectionRow = 0
+$script:LastPollRow = 0
 
 function Write-Debug-Log {
     param([string]$Message)
     if ($script:VerboseMode) {
-        Write-Host "[DEBUG] $Message" -ForegroundColor DarkGray
+        # In verbose mode, write to a separate area at the bottom
+        $savedPos = $Host.UI.RawUI.CursorPosition
+        [Console]::SetCursorPosition(0, $script:LastPollRow + 2)
+        Write-Host "[DEBUG] $Message".PadRight(70) -ForegroundColor DarkGray
+        $Host.UI.RawUI.CursorPosition = $savedPos
     }
 }
 
-function Write-Log {
-    param([string]$Message, [string]$Level = "INFO")
-
-    $timestamp = Get-Date -Format "HH:mm:ss"
-    $color = switch ($Level) {
-        "ERROR" { "Red" }
-        "SUCCESS" { "Green" }
-        "WARN" { "Yellow" }
-        "STATUS" { "Cyan" }
-        default { "Gray" }
-    }
-
-    Write-Host "  $timestamp  " -NoNewline -ForegroundColor DarkGray
-    Write-Host $Message -ForegroundColor $color
+function Write-AtPosition {
+    param(
+        [int]$Row,
+        [int]$Col,
+        [string]$Text,
+        [string]$Color = "White"
+    )
+    [Console]::SetCursorPosition($Col, $Row)
+    Write-Host $Text -NoNewline -ForegroundColor $Color
 }
 
-function Write-StatusChange {
-    param([string]$OldStatus, [string]$NewStatus)
+function Clear-Line {
+    param([int]$Row)
+    [Console]::SetCursorPosition(0, $Row)
+    Write-Host (" " * 72) -NoNewline
+}
 
-    $timestamp = Get-Date -Format "HH:mm:ss"
-    $emoji = $StatusEmoji[$NewStatus]
-    $color = $StatusDisplayColor[$NewStatus]
+function Update-CurrentStatus {
+    param([string]$Status)
 
-    Write-Host ""
-    Write-Host "  $timestamp  " -NoNewline -ForegroundColor DarkGray
-    Write-Host "$emoji " -NoNewline -ForegroundColor $color
-    Write-Host "Teams Status: " -NoNewline -ForegroundColor Gray
-    Write-Host $NewStatus -ForegroundColor $color
+    $emoji = $StatusEmoji[$Status]
+    $color = $StatusDisplayColor[$Status]
+
+    # Clear and update current status line
+    Clear-Line -Row $script:CurrentStatusRow
+    Write-AtPosition -Row $script:CurrentStatusRow -Col 2 -Text "|  " -Color DarkGray
+    Write-AtPosition -Row $script:CurrentStatusRow -Col 5 -Text "$emoji " -Color $color
+    Write-AtPosition -Row $script:CurrentStatusRow -Col 10 -Text $Status.PadRight(20) -Color $color
+
+    # Show time since last change
+    $timeStr = (Get-Date).ToString("HH:mm:ss")
+    Write-AtPosition -Row $script:CurrentStatusRow -Col 32 -Text "Last update: $timeStr".PadRight(35) -Color DarkGray
+    Write-AtPosition -Row $script:CurrentStatusRow -Col 69 -Text "|" -Color DarkGray
+}
+
+function Update-History {
+    # Display last N status changes
+    for ($i = 0; $i -lt $script:MaxHistory; $i++) {
+        $row = $script:HistoryStartRow + $i
+        Clear-Line -Row $row
+        Write-AtPosition -Row $row -Col 2 -Text "|  " -Color DarkGray
+
+        if ($i -lt $script:StatusHistory.Count) {
+            $entry = $script:StatusHistory[$script:StatusHistory.Count - 1 - $i]
+            $emoji = $StatusEmoji[$entry.Status]
+            $color = $StatusDisplayColor[$entry.Status]
+            $timeStr = $entry.Time.ToString("HH:mm:ss")
+
+            Write-AtPosition -Row $row -Col 5 -Text $timeStr -Color DarkGray
+            Write-AtPosition -Row $row -Col 15 -Text "$emoji " -Color $color
+            Write-AtPosition -Row $row -Col 20 -Text $entry.Status.PadRight(15) -Color $color
+            Write-AtPosition -Row $row -Col 36 -Text "-> Pi " -Color DarkGray
+
+            if ($entry.Sent) {
+                Write-AtPosition -Row $row -Col 42 -Text "[Sent]".PadRight(25) -Color Green
+            } else {
+                Write-AtPosition -Row $row -Col 42 -Text "[Failed]".PadRight(25) -Color Red
+            }
+        } else {
+            Write-AtPosition -Row $row -Col 5 -Text "-".PadRight(62) -Color DarkGray
+        }
+        Write-AtPosition -Row $row -Col 69 -Text "|" -Color DarkGray
+    }
+}
+
+function Update-ConnectionStatus {
+    param([bool]$Connected)
+
+    Clear-Line -Row $script:ConnectionRow
+    Write-AtPosition -Row $script:ConnectionRow -Col 2 -Text "|  Connection: " -Color DarkGray
+
+    if ($Connected) {
+        Write-AtPosition -Row $script:ConnectionRow -Col 16 -Text "Connected".PadRight(15) -Color Green
+    } else {
+        Write-AtPosition -Row $script:ConnectionRow -Col 16 -Text "Disconnected".PadRight(15) -Color Red
+    }
+
+    Write-AtPosition -Row $script:ConnectionRow -Col 33 -Text "Updates sent: $($script:UpdateCount)".PadRight(34) -Color DarkGray
+    Write-AtPosition -Row $script:ConnectionRow -Col 69 -Text "|" -Color DarkGray
+}
+
+function Update-LastPoll {
+    $timeStr = (Get-Date).ToString("HH:mm:ss")
+    Clear-Line -Row $script:LastPollRow
+    Write-AtPosition -Row $script:LastPollRow -Col 2 -Text "  Last poll: $timeStr" -Color DarkGray
+    Write-AtPosition -Row $script:LastPollRow -Col 30 -Text "| Next in: ${PollInterval}s" -Color DarkGray
+    Write-AtPosition -Row $script:LastPollRow -Col 50 -Text "| Press Ctrl+C to stop" -Color DarkGray
+}
+
+function Add-StatusToHistory {
+    param(
+        [string]$Status,
+        [bool]$Sent
+    )
+
+    $entry = @{
+        Status = $Status
+        Time = Get-Date
+        Sent = $Sent
+    }
+
+    $script:StatusHistory += $entry
+
+    # Keep only last N entries
+    if ($script:StatusHistory.Count -gt $script:MaxHistory) {
+        $script:StatusHistory = $script:StatusHistory | Select-Object -Last $script:MaxHistory
+    }
 }
 
 function Get-TeamsLogPath {
@@ -119,7 +212,7 @@ function Get-TeamsStatus {
     $logInfo = Get-TeamsLogPath
 
     if (-not $logInfo) {
-        Write-Log "Teams log file not found. Is Teams running?" -Level "WARN"
+        Write-Debug-Log "Teams log file not found. Is Teams running?"
         return @{
             Availability = "Unknown"
             Activity = "Unknown"
@@ -129,14 +222,13 @@ function Get-TeamsStatus {
     try {
         $availability = "Unknown"
         $activity = "Unknown"
-        $logContent = @()  # Initialize as array, not string
+        $logContent = @()
 
         if ($logInfo.IsNewTeams) {
-            # New Teams: Read from the SINGLE most recent MSTeams_*.log file only
             $logFiles = Get-ChildItem -Path $logInfo.Path -Filter "MSTeams_*.log" -ErrorAction SilentlyContinue |
                         Where-Object { $_.Name -notmatch "Update|SlimCore|Launcher" } |
                         Sort-Object LastWriteTime -Descending |
-                        Select-Object -First 1  # Only read the newest file
+                        Select-Object -First 1
 
             if ($logFiles) {
                 $newestFile = $logFiles[0]
@@ -148,12 +240,10 @@ function Get-TeamsStatus {
             }
         }
         else {
-            # Classic Teams: Read from logs.txt
             $logContent = Get-Content $logInfo.Path -Tail 5000 -ErrorAction Stop
         }
 
         if ($logContent.Count -gt 0) {
-            # Look for New Teams or Classic Teams status patterns
             $statusLines = $logContent | Where-Object {
                 $_ -match "UserDataCrossCloudModule|UserPresenceAction|SetBadge.*status|StatusIndicatorStateService|NewActivity"
             }
@@ -162,29 +252,23 @@ function Get-TeamsStatus {
                 $recentStatus = @($statusLines | Select-Object -Last 50)
                 Write-Debug-Log "Found $($recentStatus.Count) status-related lines"
 
-                # Process in reverse order to get the most recent status first
                 for ($i = $recentStatus.Count - 1; $i -ge 0; $i--) {
                     $line = $recentStatus[$i]
 
-                    # New Teams patterns: UserDataCrossCloudModule or UserPresenceAction
-                    # Must have "availability:" followed by a status keyword
                     if ($line -match "availability:\s*(Available|Busy|Away|BeRightBack|DoNotDisturb|Offline)[\s,}]") {
                         if ($availability -eq "Unknown") {
                             $availability = $Matches[1]
                             $activity = $Matches[1]
                             Write-Debug-Log "Matched availability: $($Matches[1])"
-                                                    }
+                        }
                     }
-                    # New Teams patterns: SetBadge status
-                    # Must have "status " followed by a status keyword (with word boundary)
                     elseif ($line -match "status\s+(Available|Busy|Away|BeRightBack|DoNotDisturb|Offline)[\s,]") {
                         if ($availability -eq "Unknown") {
                             $availability = $Matches[1]
                             $activity = $Matches[1]
                             Write-Debug-Log "Matched status: $($Matches[1])"
-                                                    }
+                        }
                     }
-                    # Classic Teams patterns (fallback for older Teams)
                     elseif ($line -match "Setting the taskbar overlay icon - Available|NewActivity: Available") {
                         if ($availability -eq "Unknown") {
                             $availability = "Available"
@@ -229,7 +313,6 @@ function Get-TeamsStatus {
                         }
                     }
 
-                    # Stop once we've found a status
                     if ($availability -ne "Unknown") {
                         break
                     }
@@ -243,7 +326,7 @@ function Get-TeamsStatus {
         }
     }
     catch {
-        Write-Log "Error reading Teams log: $_" -Level "ERROR"
+        Write-Debug-Log "Error reading Teams log: $_"
         return @{
             Availability = "Unknown"
             Activity = "Unknown"
@@ -271,7 +354,7 @@ function Send-StatusUpdate {
         return $true
     }
     catch {
-        Write-Log "Failed to send update to Raspberry Pi: $_" -Level "ERROR"
+        Write-Debug-Log "Failed to send update to Raspberry Pi: $_"
         return $false
     }
 }
@@ -283,134 +366,192 @@ function Test-RaspberryPiConnection {
 
     try {
         $response = Invoke-RestMethod -Uri $url -Method GET -TimeoutSec 3
-        if (-not $Silent) {
-            Write-Log "Connected to Raspberry Pi" -Level "SUCCESS"
-        }
         return $true
     }
     catch {
-        if (-not $Silent) {
-            Write-Log "Cannot reach Raspberry Pi at $RaspberryPiIP" -Level "ERROR"
-        }
         return $false
     }
 }
 
-# Main execution
-Clear-Host
-Write-Host ""
-Write-Host "  +====================================================================+" -ForegroundColor Cyan
-Write-Host "  |              MS Teams Status Push Client                          |" -ForegroundColor Cyan
-Write-Host "  +====================================================================+" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
-Write-Host "  |  Configuration                                                     |" -ForegroundColor DarkGray
-Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
-Write-Host "  |  Raspberry Pi:  " -NoNewline -ForegroundColor DarkGray
-Write-Host "$RaspberryPiIP".PadRight(20) -NoNewline -ForegroundColor White
-Write-Host "Port: " -NoNewline -ForegroundColor DarkGray
-Write-Host "$Port".PadRight(10) -NoNewline -ForegroundColor White
-Write-Host "          |" -ForegroundColor DarkGray
-Write-Host "  |  Poll Interval: " -NoNewline -ForegroundColor DarkGray
-Write-Host "${PollInterval}s".PadRight(51) -NoNewline -ForegroundColor White
-Write-Host "|" -ForegroundColor DarkGray
-Write-Host "  |  Connection:    " -NoNewline -ForegroundColor DarkGray
+function Draw-InitialUI {
+    Clear-Host
+    $row = 0
 
-# Test connection to Raspberry Pi
+    # Banner
+    Write-Host ""
+    $row++
+    Write-Host "  +====================================================================+" -ForegroundColor Cyan
+    $row++
+    Write-Host "  |              MS Teams Status Push Client                          |" -ForegroundColor Cyan
+    $row++
+    Write-Host "  +====================================================================+" -ForegroundColor Cyan
+    $row++
+    Write-Host ""
+    $row++
+
+    # Configuration box
+    Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+    $row++
+    Write-Host "  |  Configuration                                                     |" -ForegroundColor DarkGray
+    $row++
+    Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+    $row++
+    Write-Host "  |  Raspberry Pi:  " -NoNewline -ForegroundColor DarkGray
+    Write-Host "$RaspberryPiIP".PadRight(20) -NoNewline -ForegroundColor White
+    Write-Host "Port: " -NoNewline -ForegroundColor DarkGray
+    Write-Host "$Port".PadRight(10) -NoNewline -ForegroundColor White
+    Write-Host "          |" -ForegroundColor DarkGray
+    $row++
+    Write-Host "  |  Poll Interval: " -NoNewline -ForegroundColor DarkGray
+    Write-Host "${PollInterval}s".PadRight(51) -NoNewline -ForegroundColor White
+    Write-Host "|" -ForegroundColor DarkGray
+    $row++
+    Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+    $row++
+    Write-Host ""
+    $row++
+
+    # Services box
+    Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+    $row++
+    Write-Host "  |  Raspberry Pi Services                                             |" -ForegroundColor DarkGray
+    $row++
+    Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+    $row++
+    Write-Host "  |  Web Dashboard:   " -NoNewline -ForegroundColor DarkGray
+    Write-Host "http://${RaspberryPiIP}:5000".PadRight(49) -NoNewline -ForegroundColor Cyan
+    Write-Host "|" -ForegroundColor DarkGray
+    $row++
+    Write-Host "  |  Status API:      " -NoNewline -ForegroundColor DarkGray
+    Write-Host "http://${RaspberryPiIP}:${Port}/status".PadRight(49) -NoNewline -ForegroundColor Cyan
+    Write-Host "|" -ForegroundColor DarkGray
+    $row++
+    Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+    $row++
+    Write-Host ""
+    $row++
+
+    # Current Status box
+    Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+    $row++
+    Write-Host "  |  Current Status                                                    |" -ForegroundColor DarkGray
+    $row++
+    Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+    $row++
+    $script:CurrentStatusRow = $row
+    Write-Host "  |  [??] Unknown                                                      |" -ForegroundColor DarkGray
+    $row++
+    Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+    $row++
+    Write-Host ""
+    $row++
+
+    # History box
+    Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+    $row++
+    Write-Host "  |  Recent Changes                                                    |" -ForegroundColor DarkGray
+    $row++
+    Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+    $row++
+    $script:HistoryStartRow = $row
+    for ($i = 0; $i -lt $script:MaxHistory; $i++) {
+        Write-Host "  |  -                                                                 |" -ForegroundColor DarkGray
+        $row++
+    }
+    Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+    $row++
+    Write-Host ""
+    $row++
+
+    # Connection status
+    Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+    $row++
+    $script:ConnectionRow = $row
+    Write-Host "  |  Connection: Checking...                                           |" -ForegroundColor DarkGray
+    $row++
+    Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+    $row++
+    Write-Host ""
+    $row++
+
+    # Last poll time
+    $script:LastPollRow = $row
+    Write-Host "  Last poll: --:--:--    | Next in: ${PollInterval}s    | Press Ctrl+C to stop" -ForegroundColor DarkGray
+
+    # Hide cursor
+    [Console]::CursorVisible = $false
+}
+
+# Main execution
+Draw-InitialUI
+
+# Test initial connection
 $connectionOk = Test-RaspberryPiConnection -Silent
 if ($connectionOk) {
     $script:ConnectionStatus = "Connected"
     $script:LastSuccessfulSend = Get-Date
-    Write-Host "Connected".PadRight(51) -NoNewline -ForegroundColor Green
-} else {
-    $script:ConnectionStatus = "Disconnected"
-    Write-Host "Disconnected".PadRight(51) -NoNewline -ForegroundColor Red
 }
-Write-Host "|" -ForegroundColor DarkGray
-Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
-Write-Host ""
-Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
-Write-Host "  |  Raspberry Pi Services                                             |" -ForegroundColor DarkGray
-Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
-Write-Host "  |  Web Dashboard:   " -NoNewline -ForegroundColor DarkGray
-Write-Host "http://${RaspberryPiIP}:5000".PadRight(49) -NoNewline -ForegroundColor Cyan
-Write-Host "|" -ForegroundColor DarkGray
-Write-Host "  |  Status API:      " -NoNewline -ForegroundColor DarkGray
-Write-Host "http://${RaspberryPiIP}:${Port}/status".PadRight(49) -NoNewline -ForegroundColor Cyan
-Write-Host "|" -ForegroundColor DarkGray
-Write-Host "  |  Home Assistant:  " -NoNewline -ForegroundColor DarkGray
-Write-Host "Configure MQTT in config_push.yaml on Pi".PadRight(49) -NoNewline -ForegroundColor DarkGray
-Write-Host "|" -ForegroundColor DarkGray
-Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
-
-if (-not $connectionOk) {
-    Write-Host ""
-    Write-Host "  Connection failed. Ensure:" -ForegroundColor Yellow
-    Write-Host "    - Raspberry Pi is on and running the server" -ForegroundColor Yellow
-    Write-Host "    - IP address $RaspberryPiIP is correct" -ForegroundColor Yellow
-    Write-Host "    - Port $Port is accessible" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "  Will retry on each status update..." -ForegroundColor DarkGray
-}
-
-Write-Host ""
-Write-Host "  --------------------------------------------------------------------" -ForegroundColor DarkGray
-Write-Host "  Monitoring Teams status... Press " -NoNewline -ForegroundColor Gray
-Write-Host "Ctrl+C" -NoNewline -ForegroundColor Yellow
-Write-Host " to stop" -ForegroundColor Gray
-Write-Host "  --------------------------------------------------------------------" -ForegroundColor DarkGray
-Write-Host ""
+Update-ConnectionStatus -Connected $connectionOk
 
 # Main monitoring loop
 $consecutiveErrors = 0
 $maxConsecutiveErrors = 5
-$script:UpdateCount = 0
 
-while ($true) {
-    try {
-        $status = Get-TeamsStatus
-        Write-Debug-Log "Retrieved status: $($status.Availability)"
+try {
+    while ($true) {
+        try {
+            $status = Get-TeamsStatus
+            Write-Debug-Log "Retrieved status: $($status.Availability)"
 
-        # Check if status changed
-        if ($status.Availability -ne $script:LastStatus -or $status.Activity -ne $script:LastActivity) {
-            Write-StatusChange -OldStatus $script:LastStatus -NewStatus $status.Availability
+            # Always update current status display
+            Update-CurrentStatus -Status $status.Availability
 
-            # Send update to Raspberry Pi
-            if (Send-StatusUpdate -Availability $status.Availability -Activity $status.Activity) {
-                $script:UpdateCount++
-                $script:ConnectionStatus = "Connected"
-                $script:LastSuccessfulSend = Get-Date
-                Write-Host "             -> Raspberry Pi " -NoNewline -ForegroundColor DarkGray
-                Write-Host "[Connected]" -ForegroundColor Green
+            # Check if status changed
+            if ($status.Availability -ne $script:LastStatus -or $status.Activity -ne $script:LastActivity) {
+
+                # Send update to Raspberry Pi
+                $sent = Send-StatusUpdate -Availability $status.Availability -Activity $status.Activity
+
+                if ($sent) {
+                    $script:UpdateCount++
+                    $script:ConnectionStatus = "Connected"
+                    $script:LastSuccessfulSend = Get-Date
+                    $consecutiveErrors = 0
+                }
+                else {
+                    $script:ConnectionStatus = "Disconnected"
+                    $consecutiveErrors++
+                }
+
+                # Add to history
+                Add-StatusToHistory -Status $status.Availability -Sent $sent
+                Update-History
+                Update-ConnectionStatus -Connected $sent
+
                 $script:LastStatus = $status.Availability
                 $script:LastActivity = $status.Activity
+            }
+
+            # Check for too many consecutive errors - try reconnecting
+            if ($consecutiveErrors -ge $maxConsecutiveErrors) {
+                $connectionOk = Test-RaspberryPiConnection -Silent
+                Update-ConnectionStatus -Connected $connectionOk
                 $consecutiveErrors = 0
             }
-            else {
-                $script:ConnectionStatus = "Disconnected"
-                Write-Host "             -> Raspberry Pi " -NoNewline -ForegroundColor DarkGray
-                Write-Host "[Disconnected]" -ForegroundColor Red
-                $consecutiveErrors++
-            }
-        }
-        else {
-            Write-Debug-Log "Status unchanged: $($status.Availability)"
-        }
 
-        # Check for too many consecutive errors
-        if ($consecutiveErrors -ge $maxConsecutiveErrors) {
-            Write-Host ""
-            Write-Host "  [!] Connection lost to $RaspberryPiIP - retrying..." -ForegroundColor Yellow
-            $consecutiveErrors = 0
+            Update-LastPoll
+            Start-Sleep -Seconds $PollInterval
         }
-
-        Write-Debug-Log "Waiting $PollInterval seconds..."
-        Start-Sleep -Seconds $PollInterval
+        catch {
+            Write-Debug-Log "Error: $($_.Exception.Message)"
+            Start-Sleep -Seconds $PollInterval
+        }
     }
-    catch {
-        Write-Host ""
-        Write-Host "  [ERROR] $($_.Exception.Message)" -ForegroundColor Red
-        Write-Debug-Log "Stack trace: $($_.ScriptStackTrace)"
-        Start-Sleep -Seconds $PollInterval
-    }
+}
+finally {
+    # Restore cursor on exit
+    [Console]::CursorVisible = $true
+    [Console]::SetCursorPosition(0, $script:LastPollRow + 3)
+    Write-Host ""
+    Write-Host "  Stopped." -ForegroundColor Yellow
 }

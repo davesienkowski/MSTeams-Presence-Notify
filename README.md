@@ -204,7 +204,7 @@ powershell -ExecutionPolicy Bypass -File TeamsPushClient.ps1 -Verbose
 | `-PollInterval` | 5 | Seconds between status checks |
 | `-Verbose` | Off | Enable debug output for troubleshooting |
 
-**Client Display:**
+**Client Display (fixed, non-scrolling):**
 ```
   +====================================================================+
   |              MS Teams Status Push Client                           |
@@ -215,7 +215,6 @@ powershell -ExecutionPolicy Bypass -File TeamsPushClient.ps1 -Verbose
   +--------------------------------------------------------------------+
   |  Raspberry Pi:  192.168.50.137      Port: 8080                     |
   |  Poll Interval: 5s                                                 |
-  |  Connection:    Connected                                          |
   +--------------------------------------------------------------------+
 
   +--------------------------------------------------------------------+
@@ -223,16 +222,32 @@ powershell -ExecutionPolicy Bypass -File TeamsPushClient.ps1 -Verbose
   +--------------------------------------------------------------------+
   |  Web Dashboard:   http://192.168.50.137:5000                       |
   |  Status API:      http://192.168.50.137:8080/status                |
-  |  Home Assistant:  Configure MQTT in config_push.yaml on Pi         |
   +--------------------------------------------------------------------+
 
-  --------------------------------------------------------------------
-  Monitoring Teams status... Press Ctrl+C to stop
-  --------------------------------------------------------------------
+  +--------------------------------------------------------------------+
+  |  Current Status                                                    |
+  +--------------------------------------------------------------------+
+  |  [OK] Available              Last update: 15:36:48                 |
+  +--------------------------------------------------------------------+
 
-  15:36:48  [OK]  Teams Status: Available
-             -> Raspberry Pi [Connected]
+  +--------------------------------------------------------------------+
+  |  Recent Changes                                                    |
+  +--------------------------------------------------------------------+
+  |  15:36:48  [OK] Available       -> Pi [Sent]                       |
+  |  15:30:12  [!!] Busy            -> Pi [Sent]                       |
+  |  15:28:45  [OK] Available       -> Pi [Sent]                       |
+  |  -                                                                 |
+  |  -                                                                 |
+  +--------------------------------------------------------------------+
+
+  +--------------------------------------------------------------------+
+  |  Connection: Connected         Updates sent: 3                     |
+  +--------------------------------------------------------------------+
+
+  Last poll: 15:36:53    | Next in: 5s    | Press Ctrl+C to stop
 ```
+
+The display updates in-place without scrolling - current status and history refresh automatically.
 
 **Auto-Start on Windows Login:**
 
