@@ -328,6 +328,20 @@ if ($connectionOk) {
 }
 Write-Host "|" -ForegroundColor DarkGray
 Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+Write-Host "  |  Raspberry Pi Services                                             |" -ForegroundColor DarkGray
+Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+Write-Host "  |  Web Dashboard:   " -NoNewline -ForegroundColor DarkGray
+Write-Host "http://${RaspberryPiIP}:5000".PadRight(49) -NoNewline -ForegroundColor Cyan
+Write-Host "|" -ForegroundColor DarkGray
+Write-Host "  |  Status API:      " -NoNewline -ForegroundColor DarkGray
+Write-Host "http://${RaspberryPiIP}:${Port}/status".PadRight(49) -NoNewline -ForegroundColor Cyan
+Write-Host "|" -ForegroundColor DarkGray
+Write-Host "  |  Home Assistant:  " -NoNewline -ForegroundColor DarkGray
+Write-Host "Configure MQTT in config_push.yaml on Pi".PadRight(49) -NoNewline -ForegroundColor DarkGray
+Write-Host "|" -ForegroundColor DarkGray
+Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
 
 if (-not $connectionOk) {
     Write-Host ""

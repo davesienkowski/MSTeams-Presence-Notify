@@ -218,6 +218,14 @@ powershell -ExecutionPolicy Bypass -File TeamsPushClient.ps1 -Verbose
   |  Connection:    Connected                                          |
   +--------------------------------------------------------------------+
 
+  +--------------------------------------------------------------------+
+  |  Raspberry Pi Services                                             |
+  +--------------------------------------------------------------------+
+  |  Web Dashboard:   http://192.168.50.137:5000                       |
+  |  Status API:      http://192.168.50.137:8080/status                |
+  |  Home Assistant:  Configure MQTT in config_push.yaml on Pi         |
+  +--------------------------------------------------------------------+
+
   --------------------------------------------------------------------
   Monitoring Teams status... Press Ctrl+C to stop
   --------------------------------------------------------------------
@@ -268,9 +276,69 @@ MSTeams-Presence-Notify/
 - Receive status change alerts on your phone
 - Subscribe to your topic in the ntfy app
 
-### Home Assistant (Optional)
-- MQTT integration for smart home automation
-- Create automations based on your Teams status
+### Home Assistant Integration (Optional)
+
+Integrate with Home Assistant via MQTT for smart home automation based on your Teams presence.
+
+**1. Prerequisites:**
+- Home Assistant with MQTT broker (Mosquitto add-on recommended)
+- MQTT integration configured in Home Assistant
+
+**2. Configure the Raspberry Pi:**
+
+Edit `config_push.yaml` on the Raspberry Pi:
+
+```yaml
+homeassistant:
+  enabled: true
+  mqtt_broker: "homeassistant.local"  # Your HA hostname or IP
+  mqtt_port: 1883
+  mqtt_username: "mqtt_user"          # Your MQTT username
+  mqtt_password: "mqtt_password"      # Your MQTT password
+  mqtt_topic: "homeassistant/sensor/teams_presence"
+  discovery_prefix: "homeassistant"
+```
+
+**3. Restart the service:**
+```bash
+sudo systemctl restart teams-presence.service
+```
+
+**4. Verify in Home Assistant:**
+
+The sensor `sensor.teams_presence_status` will auto-discover via MQTT. Check:
+- **Settings** > **Devices & Services** > **MQTT** > **Entities**
+
+**5. Example Automations:**
+
+```yaml
+# Turn on office light when Available
+automation:
+  - alias: "Teams Available - Office Light On"
+    trigger:
+      - platform: state
+        entity_id: sensor.teams_presence_status
+        to: "Available"
+    action:
+      - service: light.turn_on
+        target:
+          entity_id: light.office
+
+# Turn on DND light when in meeting
+  - alias: "Teams Busy - DND Light"
+    trigger:
+      - platform: state
+        entity_id: sensor.teams_presence_status
+        to: "Busy"
+    action:
+      - service: light.turn_on
+        target:
+          entity_id: light.dnd_indicator
+        data:
+          color_name: red
+```
+
+**Available States:** `Available`, `Busy`, `Away`, `BeRightBack`, `DoNotDisturb`, `InAMeeting`, `InACall`, `Offline`, `Unknown`
 
 ## Troubleshooting
 
