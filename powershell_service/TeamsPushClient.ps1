@@ -91,7 +91,7 @@ function Write-StatusChange {
     Write-Host ""
     Write-Host "  $timestamp  " -NoNewline -ForegroundColor DarkGray
     Write-Host "$emoji " -NoNewline -ForegroundColor $color
-    Write-Host "Status: " -NoNewline -ForegroundColor Gray
+    Write-Host "Teams Status: " -NoNewline -ForegroundColor Gray
     Write-Host $NewStatus -ForegroundColor $color
 }
 
@@ -299,35 +299,35 @@ function Test-RaspberryPiConnection {
 # Main execution
 Clear-Host
 Write-Host ""
-Write-Host "  ╔══════════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "  ║              MS Teams Status Push Client                         ║" -ForegroundColor Cyan
-Write-Host "  ╚══════════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host "  +====================================================================+" -ForegroundColor Cyan
+Write-Host "  |              MS Teams Status Push Client                          |" -ForegroundColor Cyan
+Write-Host "  +====================================================================+" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  ┌─────────────────────────────────────────────────────────────────┐" -ForegroundColor DarkGray
-Write-Host "  │  Configuration                                                  │" -ForegroundColor DarkGray
-Write-Host "  ├─────────────────────────────────────────────────────────────────┤" -ForegroundColor DarkGray
-Write-Host "  │  Raspberry Pi:  " -NoNewline -ForegroundColor DarkGray
+Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+Write-Host "  |  Configuration                                                     |" -ForegroundColor DarkGray
+Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
+Write-Host "  |  Raspberry Pi:  " -NoNewline -ForegroundColor DarkGray
 Write-Host "$RaspberryPiIP".PadRight(20) -NoNewline -ForegroundColor White
 Write-Host "Port: " -NoNewline -ForegroundColor DarkGray
 Write-Host "$Port".PadRight(10) -NoNewline -ForegroundColor White
-Write-Host "       │" -ForegroundColor DarkGray
-Write-Host "  │  Poll Interval: " -NoNewline -ForegroundColor DarkGray
-Write-Host "${PollInterval}s".PadRight(48) -NoNewline -ForegroundColor White
-Write-Host "│" -ForegroundColor DarkGray
-Write-Host "  │  Connection:    " -NoNewline -ForegroundColor DarkGray
+Write-Host "          |" -ForegroundColor DarkGray
+Write-Host "  |  Poll Interval: " -NoNewline -ForegroundColor DarkGray
+Write-Host "${PollInterval}s".PadRight(51) -NoNewline -ForegroundColor White
+Write-Host "|" -ForegroundColor DarkGray
+Write-Host "  |  Connection:    " -NoNewline -ForegroundColor DarkGray
 
 # Test connection to Raspberry Pi
 $connectionOk = Test-RaspberryPiConnection -Silent
 if ($connectionOk) {
     $script:ConnectionStatus = "Connected"
     $script:LastSuccessfulSend = Get-Date
-    Write-Host "Connected".PadRight(48) -NoNewline -ForegroundColor Green
+    Write-Host "Connected".PadRight(51) -NoNewline -ForegroundColor Green
 } else {
     $script:ConnectionStatus = "Disconnected"
-    Write-Host "Disconnected".PadRight(48) -NoNewline -ForegroundColor Red
+    Write-Host "Disconnected".PadRight(51) -NoNewline -ForegroundColor Red
 }
-Write-Host "│" -ForegroundColor DarkGray
-Write-Host "  └─────────────────────────────────────────────────────────────────┘" -ForegroundColor DarkGray
+Write-Host "|" -ForegroundColor DarkGray
+Write-Host "  +--------------------------------------------------------------------+" -ForegroundColor DarkGray
 
 if (-not $connectionOk) {
     Write-Host ""
@@ -340,11 +340,11 @@ if (-not $connectionOk) {
 }
 
 Write-Host ""
-Write-Host "  ─────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host "  --------------------------------------------------------------------" -ForegroundColor DarkGray
 Write-Host "  Monitoring Teams status... Press " -NoNewline -ForegroundColor Gray
 Write-Host "Ctrl+C" -NoNewline -ForegroundColor Yellow
 Write-Host " to stop" -ForegroundColor Gray
-Write-Host "  ─────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host "  --------------------------------------------------------------------" -ForegroundColor DarkGray
 Write-Host ""
 
 # Main monitoring loop

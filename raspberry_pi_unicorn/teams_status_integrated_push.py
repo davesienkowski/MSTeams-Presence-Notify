@@ -88,17 +88,17 @@ STATUS_COLORS = {
     "Unknown": (255, 255, 255),
 }
 
-# Status emoji mapping
+# Status emoji mapping (for web/notifications)
 STATUS_EMOJI = {
-    "Available": "🟢",
-    "Busy": "🔴",
-    "Away": "🟡",
-    "BeRightBack": "🟡",
-    "DoNotDisturb": "🟣",
-    "InAMeeting": "🔴",
-    "InACall": "🔴",
-    "Offline": "⚫",
-    "Unknown": "⚪",
+    "Available": "[OK]",
+    "Busy": "[!!]",
+    "Away": "[--]",
+    "BeRightBack": "[..]",
+    "DoNotDisturb": "[XX]",
+    "InAMeeting": "[!!]",
+    "InACall": "[!!]",
+    "Offline": "[  ]",
+    "Unknown": "[??]",
 }
 
 # Global state
@@ -325,7 +325,7 @@ HTML_TEMPLATE = """
 <body>
     <div class="container">
         <div class="card">
-            <h1>📊 Teams Presence</h1>
+            <h1>Teams Presence</h1>
             <div id="status-card" class="status-display {{ status_class }}">
                 <div id="status-emoji" class="status-emoji">{{ emoji }}</div>
                 <div id="status-text" class="status-text">{{ status }}</div>
@@ -353,7 +353,7 @@ def index():
         HTML_TEMPLATE,
         status=status,
         status_class=status.lower().replace(' ', ''),
-        emoji=STATUS_EMOJI.get(status, '⚪'),
+        emoji=STATUS_EMOJI.get(status, '[??]'),
         uptime=format_uptime(current_status['uptime_seconds']),
         changes=len(status_history)
     )
@@ -364,7 +364,7 @@ def api_status():
         'availability': current_status['availability'],
         'timestamp': current_status['timestamp'],
         'uptime': format_uptime(current_status['uptime_seconds']),
-        'emoji': STATUS_EMOJI.get(current_status['availability'], '⚪'),
+        'emoji': STATUS_EMOJI.get(current_status['availability'], '[??]'),
         'color': rgb_to_hex(STATUS_COLORS.get(current_status['availability'], (255, 255, 255)))
     })
 
@@ -395,7 +395,7 @@ def send_notification(status, previous_status):
         return
 
     try:
-        emoji = STATUS_EMOJI.get(status, '⚪')
+        emoji = STATUS_EMOJI.get(status, '[??]')
         message = f"{emoji} Your Teams status is now: {status}"
         ntfy_url = f"{CONFIG['notifications']['ntfy_server']}/{CONFIG['notifications']['ntfy_topic']}"
 
@@ -456,7 +456,7 @@ def publish_mqtt_status(status):
     try:
         mqtt_client.publish(f"{CONFIG['homeassistant']['mqtt_topic']}/state", status, retain=True)
         attributes = {
-            "emoji": STATUS_EMOJI.get(status, '⚪'),
+            "emoji": STATUS_EMOJI.get(status, '[??]'),
             "color": rgb_to_hex(STATUS_COLORS.get(status, (255, 255, 255))),
             "uptime": format_uptime(current_status['uptime_seconds'])
         }
@@ -485,7 +485,7 @@ class TeamsStatusHandler(BaseHTTPRequestHandler):
                 previous_status = current_status['availability']
 
                 if new_status != previous_status:
-                    emoji = STATUS_EMOJI.get(new_status, '⚪')
+                    emoji = STATUS_EMOJI.get(new_status, '[??]')
                     timestamp = datetime.now().strftime("%H:%M:%S")
                     print(f"\n  {timestamp}  {emoji}  Status: {new_status}")
                     current_status['availability'] = new_status
@@ -543,21 +543,21 @@ def main():
     # Clear screen and show banner
     print("\033c", end="")  # Clear terminal
     print()
-    print("  ╔══════════════════════════════════════════════════════════════════╗")
-    print("  ║           MS Teams Presence Server (Raspberry Pi)                ║")
-    print("  ╚══════════════════════════════════════════════════════════════════╝")
+    print("  +====================================================================+")
+    print("  |           MS Teams Presence Server (Raspberry Pi)                 |")
+    print("  +====================================================================+")
     print()
-    print("  ┌─────────────────────────────────────────────────────────────────┐")
-    print("  │  Configuration                                                  │")
-    print("  ├─────────────────────────────────────────────────────────────────┤")
+    print("  +--------------------------------------------------------------------+")
+    print("  |  Configuration                                                     |")
+    print("  +--------------------------------------------------------------------+")
     port_str = str(CONFIG['server']['port']).ljust(10)
     web_status = "Enabled" if CONFIG['web']['enabled'] else "Disabled"
     web_str = f":{CONFIG['web']['port']}" if CONFIG['web']['enabled'] else ""
-    print(f"  │  Status Server Port: {port_str}  Web Dashboard: {web_status}{web_str.ljust(12)}│")
+    print(f"  |  Status Server Port: {port_str}  Web Dashboard: {web_status}{web_str.ljust(15)}|")
     notif_status = "Enabled" if CONFIG['notifications']['enabled'] else "Disabled"
     ha_status = "Enabled" if CONFIG['homeassistant']['enabled'] else "Disabled"
-    print(f"  │  Notifications: {notif_status.ljust(12)}  Home Assistant: {ha_status.ljust(12)}│")
-    print("  └─────────────────────────────────────────────────────────────────┘")
+    print(f"  |  Notifications: {notif_status.ljust(12)}  Home Assistant: {ha_status.ljust(15)}|")
+    print("  +--------------------------------------------------------------------+")
     print()
 
     setup_unicorn()
@@ -581,10 +581,10 @@ def main():
     server_address = ('', CONFIG['server']['port'])
     httpd = HTTPServer(server_address, TeamsStatusHandler)
 
-    print("  ─────────────────────────────────────────────────────────────────")
-    print("  ✓ Server ready! Waiting for status updates...")
+    print("  --------------------------------------------------------------------")
+    print("  [OK] Server ready! Waiting for status updates...")
     print("  Press Ctrl+C to stop")
-    print("  ─────────────────────────────────────────────────────────────────")
+    print("  --------------------------------------------------------------------")
     print()
 
     try:
