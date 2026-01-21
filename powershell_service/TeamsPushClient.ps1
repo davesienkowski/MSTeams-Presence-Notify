@@ -228,11 +228,11 @@ function Draw-UI {
     Write-Host ""
     $row = 22
 
-    # Current Status section (rows 22-26)
+    # Current Status section
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
     Write-Host "   Current Status" -ForegroundColor White
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
-    $script:StatusLineRow = 25
+    $script:StatusLineRow = 22
     Write-Host "   " -NoNewline
     Write-Host "$emoji " -NoNewline -ForegroundColor $statusColor
     Write-Host $CurrentStatus.PadRight(15) -NoNewline -ForegroundColor $statusColor
@@ -240,11 +240,11 @@ function Draw-UI {
     Write-Host ""
     $row = 27
 
-    # History section (rows 27-34)
+    # History section
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
     Write-Host "   Recent Changes" -ForegroundColor White
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
-    $script:HistoryStartRow = 30
+    $script:HistoryStartRow = 27
     for ($i = 0; $i -lt $script:MaxHistory; $i++) {
         if ($i -lt $script:StatusHistory.Count) {
             $entry = $script:StatusHistory[$script:StatusHistory.Count - 1 - $i]
@@ -267,9 +267,9 @@ function Draw-UI {
     Write-Host ""
     $row = 36
 
-    # Connection section (rows 36-38)
+    # Connection section
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
-    $script:ConnectionRow = 37
+    $script:ConnectionRow = 34
     Write-Host "   Connection: " -NoNewline -ForegroundColor DarkGray
     Write-Host $connText.PadRight(14) -NoNewline -ForegroundColor $connColor
     Write-Host "Updates sent: " -NoNewline -ForegroundColor DarkGray
@@ -277,8 +277,8 @@ function Draw-UI {
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
     Write-Host ""
 
-    # Footer with countdown (row 40)
-    $script:FooterRow = 40
+    # Footer with countdown
+    $script:FooterRow = 37
     Write-Host "  Last poll: $LastPollTime  |  Next in: $($Countdown.ToString().PadLeft(2))s  |  Ctrl+C to stop" -ForegroundColor DarkGray
 
     # Hide cursor

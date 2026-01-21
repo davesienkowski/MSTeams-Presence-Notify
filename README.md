@@ -1,28 +1,26 @@
 # MS Teams Presence Notification Light
 
-Display your Microsoft Teams status on a Raspberry Pi with Unicorn HAT (8x8 RGB LED matrix). Uses a push architecture where your Windows PC monitors Teams logs and pushes status updates to the Raspberry Pi.
+Display your Microsoft Teams status on a Raspberry Pi with Unicorn HAT (8x8 RGB LED matrix). Uses a push architecture where your PC monitors Teams logs and pushes status updates to the Raspberry Pi.
 
 ## Architecture
 
 ```mermaid
-flowchart LR
-    subgraph Windows["Windows PC"]
+flowchart TB
+    subgraph Client["Client PC (Windows/Mac/Linux)"]
         Teams[MS Teams]
-        PS[TeamsPushClient.ps1]
+        Script[Push Client Script]
+        Teams -->|Writes logs| Script
     end
+
+    Script -->|HTTP POST| Server
 
     subgraph Pi["Raspberry Pi"]
         Server[teams_status_integrated_push.py]
-        LEDs[Unicorn HAT LEDs]
+        Server --> LEDs[Unicorn HAT LEDs]
+        Server -.->|Optional| Web[Web Dashboard]
+        Server -.->|Optional| Notify[Notifications]
+        Server -.->|Optional| HA[Home Assistant]
     end
-
-    Teams -->|Writes logs| PS
-    PS -->|HTTP POST| Server
-    Server --> LEDs
-
-    Server -.->|Optional| Web[Web Dashboard]
-    Server -.->|Optional| Notify[Notifications]
-    Server -.->|Optional| HA[Home Assistant]
 ```
 
 **Key Benefits:**
@@ -47,15 +45,16 @@ flowchart LR
 
 ## Hardware Requirements
 
-### Raspberry Pi
+### Raspberry Pi (Server)
 - Raspberry Pi 3 Model B+ (or Pi 2/4/Zero W)
-- [Pimoroni Unicorn HAT](https://shop.pimoroni.com/products/unicorn-hat) (8x8 WS2812B RGB LEDs)
+- [Pimoroni Unicorn HAT](https://shop.pimoroni.com/products/unicorn-hat) (8x8 WS2812B RGB LEDs) - or see [Alternative Hardware](#alternative-hardware) section
 - 5V 2.5A+ power supply
 - MicroSD card with Raspberry Pi OS
 
-### Windows PC
+### Client PC
 - Microsoft Teams (New Teams or Classic)
-- PowerShell 5.1+ (built into Windows)
+- **Windows**: PowerShell 5.1+ (built into Windows)
+- **macOS/Linux**: Python 3.7+ with `requests` module
 - Network access to Raspberry Pi
 
 ## Quick Start
@@ -192,9 +191,10 @@ sudo systemctl stop teams-presence.service
 sudo systemctl disable teams-presence.service
 ```
 
-### 2. Windows PC Setup
+### 2. Client Setup
 
-**Run the PowerShell client:**
+#### Windows (PowerShell)
+
 ```powershell
 cd powershell_service
 
@@ -216,7 +216,58 @@ powershell -ExecutionPolicy Bypass -File TeamsPushClient.ps1 -Verbose
 | `-PollInterval` | 5 | Seconds between status checks |
 | `-Verbose` | Off | Enable debug output for troubleshooting |
 
-**Client Display (fixed, non-scrolling):**
+#### macOS (Python) - Experimental
+
+> **Note:** The macOS client is untested and may require adjustments for your Teams installation.
+
+```bash
+cd mac
+
+# Install dependency
+pip3 install requests
+
+# Run the client
+python3 TeamsPushClient.py --ip 192.168.1.100 --port 8080 --interval 5
+```
+
+**Parameters:**
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--ip` | 192.168.50.137 | Raspberry Pi IP address |
+| `--port` | 8080 | Server port |
+| `--interval` | 5 | Poll interval in seconds |
+| `--verbose` | Off | Enable debug output |
+
+**Log locations checked:**
+- New Teams: `~/Library/Containers/com.microsoft.teams2/Data/Library/Application Support/Microsoft/MSTeams/Logs`
+- Classic Teams: `~/Library/Application Support/Microsoft/Teams/Logs`
+
+#### Linux (Python) - Experimental
+
+> **Note:** The Linux client is untested and may require adjustments for your Teams installation.
+
+```bash
+cd linux
+
+# Install dependency
+pip3 install requests
+
+# Run the client
+python3 TeamsPushClient.py --ip 192.168.1.100 --port 8080 --interval 5
+```
+
+**Parameters:** Same as macOS client above.
+
+**Log locations checked:**
+- New Teams: `~/.local/share/Microsoft/Teams/Logs`
+- Classic Teams: `~/.config/Microsoft/Microsoft Teams/logs.txt`
+- Snap: `~/snap/teams/current/.config/Microsoft/Microsoft Teams/logs.txt`
+- Flatpak: `~/.var/app/com.microsoft.Teams/config/Microsoft/Microsoft Teams/logs.txt`
+
+### Client Display
+
+All clients show a fixed, non-scrolling display that updates in-place:
+
 ```
   ======================================================================
                     MS Teams Status Push Client
@@ -257,9 +308,7 @@ powershell -ExecutionPolicy Bypass -File TeamsPushClient.ps1 -Verbose
   Last poll: 15:36:53  |  Next in:  3s  |  Ctrl+C to stop
 ```
 
-The display updates in-place without scrolling - current status, countdown timer, and history refresh automatically.
-
-**Auto-Start on Windows Login:**
+### Auto-Start on Windows Login
 
 1. Create a `.bat` file (e.g., `StartTeamsMonitor.bat`):
 ```batch
@@ -277,6 +326,10 @@ powershell -ExecutionPolicy Bypass -WindowStyle Minimized -File "C:\path\to\Team
 MSTeams-Presence-Notify/
 ├── powershell_service/
 │   └── TeamsPushClient.ps1      # Windows client - monitors Teams & pushes status
+├── mac/
+│   └── TeamsPushClient.py       # macOS client (experimental)
+├── linux/
+│   └── TeamsPushClient.py       # Linux client (experimental)
 ├── raspberry_pi_unicorn/
 │   ├── teams_status_integrated_push.py  # Pi server - receives status & controls LEDs
 │   ├── config_push.yaml.example         # Example configuration
@@ -365,15 +418,98 @@ automation:
 
 **Available States:** `Available`, `Busy`, `Away`, `BeRightBack`, `DoNotDisturb`, `InAMeeting`, `InACall`, `Offline`, `Unknown`
 
+## Alternative Hardware
+
+Don't have a Unicorn HAT? The Raspberry Pi server accepts standard HTTP POST requests, making it easy to adapt for other hardware.
+
+### Using Other LED Hardware on Raspberry Pi
+
+**Blinkt! (8 RGB LEDs):**
+```bash
+curl -sS https://get.pimoroni.com/blinkt | bash
+```
+Modify the server to use `import blinkt` instead of `unicornhat`.
+
+**NeoPixel Strip/Ring:**
+Use the `rpi_ws281x` library. Example for a 16-LED ring:
+```python
+from rpi_ws281x import PixelStrip, Color
+strip = PixelStrip(16, 18)  # 16 LEDs on GPIO 18
+strip.begin()
+```
+
+**Single RGB LED:**
+Wire an RGB LED to GPIO pins and use `RPi.GPIO` to control colors.
+
+### Using ESP32/ESP8266
+
+Create a simple HTTP server that receives the same JSON payload:
+
+```cpp
+// Arduino/ESP32 example endpoint
+server.on("/status", HTTP_POST, []() {
+  String body = server.arg("plain");
+  // Parse JSON: {"availability":"Busy","color":"#FF0000"}
+  // Set LED color based on payload
+});
+```
+
+Popular options:
+- **ESP32 with NeoPixel**: WiFi-enabled, low power
+- **ESP8266 (Wemos D1 Mini)**: Cheap, easy to program
+- **Arduino with Ethernet Shield**: Wired connection option
+
+### Using Other Single-Board Computers
+
+Any device that can:
+1. Run a Python HTTP server
+2. Control GPIO or addressable LEDs
+
+Will work with minimal modification. Options include:
+- **Orange Pi** / **Banana Pi**: Pin-compatible with Raspberry Pi
+- **BeagleBone**: Good GPIO support
+- **NVIDIA Jetson Nano**: Overkill but works
+
+### API Endpoint
+
+The server exposes a simple REST API. To integrate with any hardware:
+
+```bash
+# POST to /status with JSON body
+curl -X POST http://<pi-ip>:8080/status \
+  -H "Content-Type: application/json" \
+  -d '{"availability":"Busy","activity":"InAMeeting","color":"#FF0000"}'
+
+# GET current status
+curl http://<pi-ip>:8080/status
+```
+
+**JSON Payload:**
+```json
+{
+  "availability": "Busy",
+  "activity": "InAMeeting",
+  "color": "#FF0000",
+  "timestamp": "2024-01-15T10:30:00"
+}
+```
+
 ## Troubleshooting
 
-### PowerShell Client
+### PowerShell Client (Windows)
 | Issue | Solution |
 |-------|----------|
 | Teams log not found | Ensure Teams is running. The client checks both New Teams and Classic Teams log locations. |
 | Cannot connect to Pi | Check firewall settings, verify Pi IP address, ensure Pi is on the same network. |
 | Status always "Unknown" | Run with `-Verbose` flag to see debug output and matched log patterns. |
 | Connection shows "Disconnected" | Verify the Pi server is running: `sudo systemctl status teams-presence.service` |
+
+### Python Client (macOS/Linux)
+| Issue | Solution |
+|-------|----------|
+| Module not found | Install requests: `pip3 install requests` |
+| Teams log not found | Teams on Linux/macOS may use different log locations. Run with `--verbose` to debug. |
+| Permission denied | Some log locations may require read permissions. |
 
 ### Raspberry Pi
 | Issue | Solution |
@@ -393,7 +529,7 @@ automation:
 ## How It Works
 
 1. **Teams writes status to local log files** - Teams continuously updates log files with presence information
-2. **PowerShell monitors logs** - The client reads the last 5000 lines of the newest Teams log every 5 seconds
+2. **Client monitors logs** - The client reads the last 5000 lines of the newest Teams log every 5 seconds
 3. **Status parsed via regex** - Looks for patterns like `availability: Available`, `SetBadge status`, etc.
 4. **HTTP POST to Raspberry Pi** - When status changes, sends JSON: `{"availability":"Busy","activity":"Busy","color":"#FF0000"}`
 5. **Pi updates LED display** - Changes the Unicorn HAT color and animation based on received status
