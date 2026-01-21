@@ -4,13 +4,25 @@ Display your Microsoft Teams status on a Raspberry Pi with Unicorn HAT (8x8 RGB 
 
 ## Architecture
 
-```
-Windows PC                          Raspberry Pi
-[MS Teams] --> [TeamsPushClient.ps1] --> HTTP POST --> [teams_status_integrated_push.py] --> [Unicorn HAT LEDs]
-                     |                                              |
-               Monitors Teams logs                          Receives status updates
-               Pushes to Pi on change                       Controls 8x8 LED matrix
-                                                            Optional: Web dashboard, notifications, Home Assistant
+```mermaid
+flowchart LR
+    subgraph Windows["Windows PC"]
+        Teams[MS Teams]
+        PS[TeamsPushClient.ps1]
+    end
+
+    subgraph Pi["Raspberry Pi"]
+        Server[teams_status_integrated_push.py]
+        LEDs[Unicorn HAT LEDs]
+    end
+
+    Teams -->|Writes logs| PS
+    PS -->|HTTP POST| Server
+    Server --> LEDs
+
+    Server -.->|Optional| Web[Web Dashboard]
+    Server -.->|Optional| Notify[Notifications]
+    Server -.->|Optional| HA[Home Assistant]
 ```
 
 **Key Benefits:**
@@ -206,48 +218,44 @@ powershell -ExecutionPolicy Bypass -File TeamsPushClient.ps1 -Verbose
 
 **Client Display (fixed, non-scrolling):**
 ```
-  +====================================================================+
-  |              MS Teams Status Push Client                           |
-  +====================================================================+
+  ======================================================================
+                    MS Teams Status Push Client
+  ======================================================================
 
-  +--------------------------------------------------------------------+
-  |  Configuration                                                     |
-  +--------------------------------------------------------------------+
-  |  Raspberry Pi:  192.168.50.137      Port: 8080                     |
-  |  Poll Interval: 5s                                                 |
-  +--------------------------------------------------------------------+
+  ----------------------------------------------------------------------
+   Configuration
+  ----------------------------------------------------------------------
+   Raspberry Pi:  192.168.50.137     Port: 8080
+   Poll Interval: 5s
 
-  +--------------------------------------------------------------------+
-  |  Raspberry Pi Services                                             |
-  +--------------------------------------------------------------------+
-  |  Web Dashboard:   http://192.168.50.137:5000                       |
-  |  Status API:      http://192.168.50.137:8080/status                |
-  +--------------------------------------------------------------------+
+  ----------------------------------------------------------------------
+   Raspberry Pi Services
+  ----------------------------------------------------------------------
+   Web Dashboard:  http://192.168.50.137:5000
+   Status API:     http://192.168.50.137:8080/status
 
-  +--------------------------------------------------------------------+
-  |  Current Status                                                    |
-  +--------------------------------------------------------------------+
-  |  [OK] Available              Last update: 15:36:48                 |
-  +--------------------------------------------------------------------+
+  ----------------------------------------------------------------------
+   Current Status
+  ----------------------------------------------------------------------
+   [OK] Available       Last update: 15:36:48
 
-  +--------------------------------------------------------------------+
-  |  Recent Changes                                                    |
-  +--------------------------------------------------------------------+
-  |  15:36:48  [OK] Available       -> Pi [Sent]                       |
-  |  15:30:12  [!!] Busy            -> Pi [Sent]                       |
-  |  15:28:45  [OK] Available       -> Pi [Sent]                       |
-  |  -                                                                 |
-  |  -                                                                 |
-  +--------------------------------------------------------------------+
+  ----------------------------------------------------------------------
+   Recent Changes
+  ----------------------------------------------------------------------
+   15:36:48  [OK] Available      -> Pi [Sent]
+   15:30:12  [!!] Busy           -> Pi [Sent]
+   15:28:45  [OK] Available      -> Pi [Sent]
+   -
+   -
 
-  +--------------------------------------------------------------------+
-  |  Connection: Connected         Updates sent: 3                     |
-  +--------------------------------------------------------------------+
+  ----------------------------------------------------------------------
+   Connection: Connected      Updates sent: 3
+  ----------------------------------------------------------------------
 
-  Last poll: 15:36:53    | Next in: 5s    | Press Ctrl+C to stop
+  Last poll: 15:36:53  |  Next in:  3s  |  Ctrl+C to stop
 ```
 
-The display updates in-place without scrolling - current status and history refresh automatically.
+The display updates in-place without scrolling - current status, countdown timer, and history refresh automatically.
 
 **Auto-Start on Windows Login:**
 
