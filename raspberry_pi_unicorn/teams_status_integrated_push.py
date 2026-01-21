@@ -38,7 +38,6 @@ def load_config():
         with open(config_path, 'r') as f:
             return yaml.safe_load(f)
     except FileNotFoundError:
-        print("Warning: config_push.yaml not found, using defaults")
         return get_default_config()
 
 def get_default_config():
@@ -130,7 +129,7 @@ import requests as http_requests
 def signal_handler(sig, frame):
     """Handle Ctrl+C gracefully"""
     global shutdown_flag, httpd
-    print("\n\nShutting down...")
+    print("\n\n  Shutting down...")
     shutdown_flag = True
     if mqtt_client:
         mqtt_client.disconnect()
@@ -144,7 +143,6 @@ def setup_unicorn():
     unicorn.set_layout(unicorn.HAT)
     unicorn.rotation(0)
     unicorn.brightness(CONFIG['unicorn']['brightness'])
-    print(f"Unicorn HAT initialized: 8x8 matrix at {int(CONFIG['unicorn']['brightness'] * 100)}% brightness")
 
 def clear_display():
     """Clear all LEDs"""
@@ -253,7 +251,6 @@ def animation_loop():
 
 def startup_animation():
     """Rainbow startup"""
-    print("Running startup animation...")
     for hue in range(360):
         if shutdown_flag:
             break
@@ -381,7 +378,10 @@ def rgb_to_hex(rgb):
 
 def run_flask():
     if CONFIG['web']['enabled']:
-        print(f"Starting web dashboard on http://{CONFIG['web']['host']}:{CONFIG['web']['port']}")
+        # Suppress Flask's default startup messages
+        import logging
+        log = logging.getLogger('werkzeug')
+        log.setLevel(logging.ERROR)
         app.run(host=CONFIG['web']['host'], port=CONFIG['web']['port'], debug=False, use_reloader=False)
 
 # ============================================================================
@@ -405,9 +405,9 @@ def send_notification(status, previous_status):
             headers={"Title": "Teams Status Changed", "Priority": "default", "Tags": "computer,teams"},
             timeout=5
         )
-        print(f"✓ Push notification sent: {status}")
-    except Exception as e:
-        print(f"✗ Notification failed: {e}")
+        pass  # Notification sent silently
+    except Exception:
+        pass  # Silently ignore notification failures
 
 # ============================================================================
 # HOME ASSISTANT MQTT
@@ -429,10 +429,8 @@ def setup_mqtt():
     try:
         mqtt_client.connect(CONFIG['homeassistant']['mqtt_broker'], CONFIG['homeassistant']['mqtt_port'], 60)
         mqtt_client.loop_start()
-        print(f"✓ MQTT connected: {CONFIG['homeassistant']['mqtt_broker']}")
         return mqtt_client
-    except Exception as e:
-        print(f"✗ MQTT connection failed: {e}")
+    except Exception:
         return None
 
 def on_mqtt_connect(client, userdata, flags, rc):
@@ -463,8 +461,8 @@ def publish_mqtt_status(status):
             "uptime": format_uptime(current_status['uptime_seconds'])
         }
         mqtt_client.publish(f"{CONFIG['homeassistant']['mqtt_topic']}/attributes", json.dumps(attributes), retain=True)
-    except Exception as e:
-        print(f"✗ MQTT publish failed: {e}")
+    except Exception:
+        pass  # Silently ignore MQTT publish failures
 
 # ============================================================================
 # HTTP SERVER (RECEIVES STATUS FROM WORK PC)
@@ -472,8 +470,8 @@ def publish_mqtt_status(status):
 
 class TeamsStatusHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        if "POST" in format:
-            print(f"[{self.log_date_time_string()}] {format % args}")
+        # Suppress default HTTP logging - we handle status changes ourselves
+        pass
 
     def do_POST(self):
         """Receive status update from work PC"""
@@ -487,7 +485,9 @@ class TeamsStatusHandler(BaseHTTPRequestHandler):
                 previous_status = current_status['availability']
 
                 if new_status != previous_status:
-                    print(f"Status changed: {previous_status} → {new_status}")
+                    emoji = STATUS_EMOJI.get(new_status, '⚪')
+                    timestamp = datetime.now().strftime("%H:%M:%S")
+                    print(f"\n  {timestamp}  {emoji}  Status: {new_status}")
                     current_status['availability'] = new_status
                     current_status['timestamp'] = datetime.now().isoformat()
                     current_status['last_change'] = datetime.now().isoformat()
@@ -503,8 +503,7 @@ class TeamsStatusHandler(BaseHTTPRequestHandler):
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
                 self.wfile.write(json.dumps({"status": "ok"}).encode('utf-8'))
-            except Exception as e:
-                print(f"Error: {e}")
+            except Exception:
                 self.send_response(400)
                 self.end_headers()
         else:
@@ -541,15 +540,24 @@ def main():
 
     signal.signal(signal.SIGINT, signal_handler)
 
-    print("=" * 60)
-    print("MS Teams Presence - Integrated (PUSH Architecture)")
-    print("=" * 60)
-    print(f"Status Server: Port {CONFIG['server']['port']} (receives from work PC)")
-    print(f"Web Dashboard: {'Enabled' if CONFIG['web']['enabled'] else 'Disabled'}")
-    if CONFIG['web']['enabled']:
-        print(f"  → http://localhost:{CONFIG['web']['port']}")
-    print(f"Push Notifications: {'Enabled' if CONFIG['notifications']['enabled'] else 'Disabled'}")
-    print(f"Home Assistant: {'Enabled' if CONFIG['homeassistant']['enabled'] else 'Disabled'}")
+    # Clear screen and show banner
+    print("\033c", end="")  # Clear terminal
+    print()
+    print("  ╔══════════════════════════════════════════════════════════════════╗")
+    print("  ║           MS Teams Presence Server (Raspberry Pi)                ║")
+    print("  ╚══════════════════════════════════════════════════════════════════╝")
+    print()
+    print("  ┌─────────────────────────────────────────────────────────────────┐")
+    print("  │  Configuration                                                  │")
+    print("  ├─────────────────────────────────────────────────────────────────┤")
+    port_str = str(CONFIG['server']['port']).ljust(10)
+    web_status = "Enabled" if CONFIG['web']['enabled'] else "Disabled"
+    web_str = f":{CONFIG['web']['port']}" if CONFIG['web']['enabled'] else ""
+    print(f"  │  Status Server Port: {port_str}  Web Dashboard: {web_status}{web_str.ljust(12)}│")
+    notif_status = "Enabled" if CONFIG['notifications']['enabled'] else "Disabled"
+    ha_status = "Enabled" if CONFIG['homeassistant']['enabled'] else "Disabled"
+    print(f"  │  Notifications: {notif_status.ljust(12)}  Home Assistant: {ha_status.ljust(12)}│")
+    print("  └─────────────────────────────────────────────────────────────────┘")
     print()
 
     setup_unicorn()
@@ -569,16 +577,15 @@ def main():
     if CONFIG['homeassistant']['enabled']:
         setup_mqtt()
 
-    # Start HTTP server (receives from work PC)
-    print(f"Starting status server on port {CONFIG['server']['port']}...")
-    print("Work PC should POST to: http://<raspberry-pi-ip>:8080/status")
-    print()
-
+    # Start HTTP server
     server_address = ('', CONFIG['server']['port'])
     httpd = HTTPServer(server_address, TeamsStatusHandler)
 
-    print("✓ Server ready! Waiting for status updates from work PC...")
-    print("Press Ctrl+C to exit\n")
+    print("  ─────────────────────────────────────────────────────────────────")
+    print("  ✓ Server ready! Waiting for status updates...")
+    print("  Press Ctrl+C to stop")
+    print("  ─────────────────────────────────────────────────────────────────")
+    print()
 
     try:
         httpd.serve_forever()

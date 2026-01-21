@@ -5,7 +5,8 @@
 param(
     [string]$RaspberryPiIP = "192.168.50.137",  # Change to your Raspberry Pi's IP
     [int]$Port = 8080,
-    [int]$PollInterval = 5  # Seconds between status checks
+    [int]$PollInterval = 5,  # Seconds between status checks
+    [switch]$Verbose  # Enable verbose debug output
 )
 
 # Teams log file locations
@@ -27,21 +28,71 @@ $StatusColors = @{
     "Unknown" = "#FFFFFF"
 }
 
+$StatusEmoji = @{
+    "Available" = "[OK]"
+    "Busy" = "[!!]"
+    "Away" = "[--]"
+    "BeRightBack" = "[..]"
+    "DoNotDisturb" = "[XX]"
+    "InAMeeting" = "[!!]"
+    "InACall" = "[!!]"
+    "Offline" = "[  ]"
+    "Unknown" = "[??]"
+}
+
+$StatusDisplayColor = @{
+    "Available" = "Green"
+    "Busy" = "Red"
+    "Away" = "Yellow"
+    "BeRightBack" = "Yellow"
+    "DoNotDisturb" = "Magenta"
+    "InAMeeting" = "Red"
+    "InACall" = "Red"
+    "Offline" = "DarkGray"
+    "Unknown" = "White"
+}
+
 $script:LastStatus = $null
 $script:LastActivity = $null
+$script:VerboseMode = $Verbose
+$script:ConnectionStatus = "Unknown"
+$script:LastSuccessfulSend = $null
+
+function Write-Debug-Log {
+    param([string]$Message)
+    if ($script:VerboseMode) {
+        Write-Host "[DEBUG] $Message" -ForegroundColor DarkGray
+    }
+}
 
 function Write-Log {
     param([string]$Message, [string]$Level = "INFO")
 
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $timestamp = Get-Date -Format "HH:mm:ss"
     $color = switch ($Level) {
         "ERROR" { "Red" }
         "SUCCESS" { "Green" }
         "WARN" { "Yellow" }
-        default { "White" }
+        "STATUS" { "Cyan" }
+        default { "Gray" }
     }
 
-    Write-Host "[$timestamp] [$Level] $Message" -ForegroundColor $color
+    Write-Host "  $timestamp  " -NoNewline -ForegroundColor DarkGray
+    Write-Host $Message -ForegroundColor $color
+}
+
+function Write-StatusChange {
+    param([string]$OldStatus, [string]$NewStatus)
+
+    $timestamp = Get-Date -Format "HH:mm:ss"
+    $emoji = $StatusEmoji[$NewStatus]
+    $color = $StatusDisplayColor[$NewStatus]
+
+    Write-Host ""
+    Write-Host "  $timestamp  " -NoNewline -ForegroundColor DarkGray
+    Write-Host "$emoji " -NoNewline -ForegroundColor $color
+    Write-Host "Status: " -NoNewline -ForegroundColor Gray
+    Write-Host $NewStatus -ForegroundColor $color
 }
 
 function Get-TeamsLogPath {
@@ -89,12 +140,11 @@ function Get-TeamsStatus {
 
             if ($logFiles) {
                 $newestFile = $logFiles[0]
-                Write-Verbose "Reading from log file: $($newestFile.Name) (Modified: $($newestFile.LastWriteTime))" -Verbose
-                # Read more lines to get more recent status entries
+                Write-Debug-Log "Reading from log file: $($newestFile.Name)"
                 $logContent = Get-Content $newestFile.FullName -Tail 5000 -ErrorAction SilentlyContinue
-                Write-Verbose "Total lines read: $($logContent.Count)" -Verbose
+                Write-Debug-Log "Total lines read: $($logContent.Count)"
             } else {
-                Write-Verbose "No MSTeams log files found!" -Verbose
+                Write-Debug-Log "No MSTeams log files found!"
             }
         }
         else {
@@ -109,29 +159,8 @@ function Get-TeamsStatus {
             }
 
             if ($statusLines) {
-                # Get most recent status - take LAST 50 (most recent entries from the tail)
-                # Ensure it's an array even if there's only one line
                 $recentStatus = @($statusLines | Select-Object -Last 50)
-
-                Write-Verbose "Found $($recentStatus.Count) status-related lines" -Verbose
-
-                # Show the LAST few lines for debugging (most recent)
-                if ($recentStatus.Count -gt 0) {
-                    Write-Verbose "Sample of most recent status lines:" -Verbose
-                    $samplesToShow = [Math]::Min(3, $recentStatus.Count)
-                    # Show from end of array (most recent)
-                    for ($j = 0; $j -lt $samplesToShow; $j++) {
-                        $sampleLine = $recentStatus[$recentStatus.Count - 1 - $j]
-                        # Extract timestamp from line
-                        if ($sampleLine -match "^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})") {
-                            $timestamp = $Matches[1]
-                        } else {
-                            $timestamp = "No timestamp"
-                        }
-                        $linePreview = if ($sampleLine.Length -gt 150) { $sampleLine.Substring(0, 150) } else { $sampleLine }
-                        Write-Verbose "  [$timestamp] $linePreview" -Verbose
-                    }
-                }
+                Write-Debug-Log "Found $($recentStatus.Count) status-related lines"
 
                 # Process in reverse order to get the most recent status first
                 for ($i = $recentStatus.Count - 1; $i -ge 0; $i--) {
@@ -143,9 +172,8 @@ function Get-TeamsStatus {
                         if ($availability -eq "Unknown") {
                             $availability = $Matches[1]
                             $activity = $Matches[1]
-                            Write-Verbose "Matched availability pattern: $($Matches[1])" -Verbose
-                            Write-Verbose "From line: $($line.Substring(0, [Math]::Min(150, $line.Length)))" -Verbose
-                        }
+                            Write-Debug-Log "Matched availability: $($Matches[1])"
+                                                    }
                     }
                     # New Teams patterns: SetBadge status
                     # Must have "status " followed by a status keyword (with word boundary)
@@ -153,16 +181,15 @@ function Get-TeamsStatus {
                         if ($availability -eq "Unknown") {
                             $availability = $Matches[1]
                             $activity = $Matches[1]
-                            Write-Verbose "Matched status pattern: $($Matches[1])" -Verbose
-                            Write-Verbose "From line: $($line.Substring(0, [Math]::Min(150, $line.Length)))" -Verbose
-                        }
+                            Write-Debug-Log "Matched status: $($Matches[1])"
+                                                    }
                     }
                     # Classic Teams patterns (fallback for older Teams)
                     elseif ($line -match "Setting the taskbar overlay icon - Available|NewActivity: Available") {
                         if ($availability -eq "Unknown") {
                             $availability = "Available"
                             $activity = "Available"
-                            Write-Verbose "Matched Classic Teams Available pattern" -Verbose
+                            Write-Debug-Log "Matched: Available (Classic)"
                         }
                     }
                     elseif ($line -match "NewActivity: (InAMeeting|InACall|Busy)") {
@@ -170,35 +197,35 @@ function Get-TeamsStatus {
                             $match = $Matches[1]
                             $availability = $match
                             $activity = $match
-                            Write-Verbose "Matched Classic Teams activity pattern: $match" -Verbose
+                            Write-Debug-Log "Matched: $match (Classic)"
                         }
                     }
                     elseif ($line -match "NewActivity: Away|Setting the taskbar overlay icon - Away") {
                         if ($availability -eq "Unknown") {
                             $availability = "Away"
                             $activity = "Away"
-                            Write-Verbose "Matched Classic Teams Away pattern" -Verbose
+                            Write-Debug-Log "Matched: Away (Classic)"
                         }
                     }
                     elseif ($line -match "NewActivity: BeRightBack") {
                         if ($availability -eq "Unknown") {
                             $availability = "BeRightBack"
                             $activity = "BeRightBack"
-                            Write-Verbose "Matched Classic Teams BeRightBack pattern" -Verbose
+                            Write-Debug-Log "Matched: BeRightBack (Classic)"
                         }
                     }
                     elseif ($line -match "NewActivity: (DoNotDisturb|Presenting)") {
                         if ($availability -eq "Unknown") {
                             $availability = "DoNotDisturb"
                             $activity = "DoNotDisturb"
-                            Write-Verbose "Matched Classic Teams DND pattern" -Verbose
+                            Write-Debug-Log "Matched: DoNotDisturb (Classic)"
                         }
                     }
                     elseif ($line -match "NewActivity: Offline") {
                         if ($availability -eq "Unknown") {
                             $availability = "Offline"
                             $activity = "Offline"
-                            Write-Verbose "Matched Classic Teams Offline pattern" -Verbose
+                            Write-Debug-Log "Matched: Offline (Classic)"
                         }
                     }
 
@@ -250,91 +277,126 @@ function Send-StatusUpdate {
 }
 
 function Test-RaspberryPiConnection {
+    param([switch]$Silent)
+
     $url = "http://${RaspberryPiIP}:${Port}/"
 
     try {
         $response = Invoke-RestMethod -Uri $url -Method GET -TimeoutSec 3
-        Write-Log "Successfully connected to Raspberry Pi at $RaspberryPiIP" -Level "SUCCESS"
+        if (-not $Silent) {
+            Write-Log "Connected to Raspberry Pi" -Level "SUCCESS"
+        }
         return $true
     }
     catch {
-        Write-Log "Cannot reach Raspberry Pi at $RaspberryPiIP. Is the server running?" -Level "ERROR"
+        if (-not $Silent) {
+            Write-Log "Cannot reach Raspberry Pi at $RaspberryPiIP" -Level "ERROR"
+        }
         return $false
     }
 }
 
 # Main execution
+Clear-Host
 Write-Host ""
-Write-Host "=" * 70 -ForegroundColor Cyan
-Write-Host " MS Teams Status Push Client" -ForegroundColor Cyan
-Write-Host "=" * 70 -ForegroundColor Cyan
+Write-Host "  ╔══════════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
+Write-Host "  ║              MS Teams Status Push Client                         ║" -ForegroundColor Cyan
+Write-Host "  ╚══════════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
-Write-Log "Raspberry Pi IP: $RaspberryPiIP"
-Write-Log "Port: $Port"
-Write-Log "Poll interval: $PollInterval seconds"
-Write-Host ""
+Write-Host "  ┌─────────────────────────────────────────────────────────────────┐" -ForegroundColor DarkGray
+Write-Host "  │  Configuration                                                  │" -ForegroundColor DarkGray
+Write-Host "  ├─────────────────────────────────────────────────────────────────┤" -ForegroundColor DarkGray
+Write-Host "  │  Raspberry Pi:  " -NoNewline -ForegroundColor DarkGray
+Write-Host "$RaspberryPiIP".PadRight(20) -NoNewline -ForegroundColor White
+Write-Host "Port: " -NoNewline -ForegroundColor DarkGray
+Write-Host "$Port".PadRight(10) -NoNewline -ForegroundColor White
+Write-Host "       │" -ForegroundColor DarkGray
+Write-Host "  │  Poll Interval: " -NoNewline -ForegroundColor DarkGray
+Write-Host "${PollInterval}s".PadRight(48) -NoNewline -ForegroundColor White
+Write-Host "│" -ForegroundColor DarkGray
+Write-Host "  │  Connection:    " -NoNewline -ForegroundColor DarkGray
 
 # Test connection to Raspberry Pi
-Write-Log "Testing connection to Raspberry Pi..."
-if (-not (Test-RaspberryPiConnection)) {
+$connectionOk = Test-RaspberryPiConnection -Silent
+if ($connectionOk) {
+    $script:ConnectionStatus = "Connected"
+    $script:LastSuccessfulSend = Get-Date
+    Write-Host "Connected".PadRight(48) -NoNewline -ForegroundColor Green
+} else {
+    $script:ConnectionStatus = "Disconnected"
+    Write-Host "Disconnected".PadRight(48) -NoNewline -ForegroundColor Red
+}
+Write-Host "│" -ForegroundColor DarkGray
+Write-Host "  └─────────────────────────────────────────────────────────────────┘" -ForegroundColor DarkGray
+
+if (-not $connectionOk) {
     Write-Host ""
-    Write-Log "Please ensure:" -Level "WARN"
-    Write-Log "  1. Raspberry Pi is powered on and running teams_status_server.py" -Level "WARN"
-    Write-Log "  2. IP address is correct: $RaspberryPiIP" -Level "WARN"
-    Write-Log "  3. Port $Port is accessible from this PC" -Level "WARN"
+    Write-Host "  Connection failed. Ensure:" -ForegroundColor Yellow
+    Write-Host "    - Raspberry Pi is on and running the server" -ForegroundColor Yellow
+    Write-Host "    - IP address $RaspberryPiIP is correct" -ForegroundColor Yellow
+    Write-Host "    - Port $Port is accessible" -ForegroundColor Yellow
     Write-Host ""
-    Write-Log "Continuing anyway... Will retry on each update." -Level "WARN"
+    Write-Host "  Will retry on each status update..." -ForegroundColor DarkGray
 }
 
 Write-Host ""
-Write-Log "Starting Teams status monitoring..."
-Write-Log "Press Ctrl+C to stop"
+Write-Host "  ─────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host "  Monitoring Teams status... Press " -NoNewline -ForegroundColor Gray
+Write-Host "Ctrl+C" -NoNewline -ForegroundColor Yellow
+Write-Host " to stop" -ForegroundColor Gray
+Write-Host "  ─────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
 Write-Host ""
 
 # Main monitoring loop
 $consecutiveErrors = 0
 $maxConsecutiveErrors = 5
+$script:UpdateCount = 0
 
 while ($true) {
     try {
-        # Get current Teams status
         $status = Get-TeamsStatus
-        Write-Verbose "Retrieved status: $($status.Availability)" -Verbose
+        Write-Debug-Log "Retrieved status: $($status.Availability)"
 
         # Check if status changed
         if ($status.Availability -ne $script:LastStatus -or $status.Activity -ne $script:LastActivity) {
-            Write-Log "Status changed: $($script:LastStatus) → $($status.Availability)" -Level "SUCCESS"
+            Write-StatusChange -OldStatus $script:LastStatus -NewStatus $status.Availability
 
             # Send update to Raspberry Pi
             if (Send-StatusUpdate -Availability $status.Availability -Activity $status.Activity) {
-                Write-Log "Update sent successfully" -Level "SUCCESS"
+                $script:UpdateCount++
+                $script:ConnectionStatus = "Connected"
+                $script:LastSuccessfulSend = Get-Date
+                Write-Host "             -> Raspberry Pi " -NoNewline -ForegroundColor DarkGray
+                Write-Host "[Connected]" -ForegroundColor Green
                 $script:LastStatus = $status.Availability
                 $script:LastActivity = $status.Activity
                 $consecutiveErrors = 0
             }
             else {
+                $script:ConnectionStatus = "Disconnected"
+                Write-Host "             -> Raspberry Pi " -NoNewline -ForegroundColor DarkGray
+                Write-Host "[Disconnected]" -ForegroundColor Red
                 $consecutiveErrors++
             }
         }
         else {
-            Write-Verbose "Status unchanged: $($status.Availability)" -Verbose
+            Write-Debug-Log "Status unchanged: $($status.Availability)"
         }
 
         # Check for too many consecutive errors
         if ($consecutiveErrors -ge $maxConsecutiveErrors) {
-            Write-Log "Too many consecutive errors. Check Raspberry Pi connection." -Level "ERROR"
-            $consecutiveErrors = 0  # Reset to avoid spam
+            Write-Host ""
+            Write-Host "  [!] Connection lost to $RaspberryPiIP - retrying..." -ForegroundColor Yellow
+            $consecutiveErrors = 0
         }
 
-        # Wait before next check
-        Write-Verbose "Waiting $PollInterval seconds before next check..." -Verbose
+        Write-Debug-Log "Waiting $PollInterval seconds..."
         Start-Sleep -Seconds $PollInterval
-        Write-Verbose "Loop iteration complete, starting next check..." -Verbose
     }
     catch {
-        Write-Log "Unexpected error: $_" -Level "ERROR"
-        Write-Log "Error details: $($_.Exception.Message)" -Level "ERROR"
-        Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level "ERROR"
+        Write-Host ""
+        Write-Host "  [ERROR] $($_.Exception.Message)" -ForegroundColor Red
+        Write-Debug-Log "Stack trace: $($_.ScriptStackTrace)"
         Start-Sleep -Seconds $PollInterval
     }
 }

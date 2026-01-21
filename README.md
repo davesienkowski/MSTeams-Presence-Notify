@@ -99,11 +99,85 @@ homeassistant:
 sudo python3 teams_status_integrated_push.py
 ```
 
-**Optional: Auto-start on boot:**
+**Server Display:**
+```
+  ╔══════════════════════════════════════════════════════════════════╗
+  ║           MS Teams Presence Server (Raspberry Pi)                ║
+  ╚══════════════════════════════════════════════════════════════════╝
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  Configuration                                                  │
+  ├─────────────────────────────────────────────────────────────────┤
+  │  Status Server Port: 8080        Web Dashboard: Enabled:5000    │
+  │  Notifications: Disabled     Home Assistant: Disabled           │
+  └─────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────────────────────────
+  ✓ Server ready! Waiting for status updates...
+  Press Ctrl+C to stop
+  ─────────────────────────────────────────────────────────────────
+
+  15:36:48  🟢  Status: Available
+  15:42:15  🔴  Status: Busy
+```
+
+### Auto-Start on Boot (systemd)
+
+Create a systemd service to automatically start the server when the Raspberry Pi boots:
+
+**1. Create the service file:**
 ```bash
-# Add to /etc/rc.local before 'exit 0'
-sudo nano /etc/rc.local
-# Add: cd /home/pi/MSTeams-Presence-Notify/raspberry_pi_unicorn && sudo python3 teams_status_integrated_push.py &
+sudo nano /etc/systemd/system/teams-presence.service
+```
+
+**2. Add the following content:**
+```ini
+[Unit]
+Description=MS Teams Presence LED Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/pi/MSTeams-Presence-Notify/raspberry_pi_unicorn
+ExecStart=/usr/bin/python3 /home/pi/MSTeams-Presence-Notify/raspberry_pi_unicorn/teams_status_integrated_push.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+> **Note:** Adjust the paths if your installation directory is different.
+
+**3. Enable and start the service:**
+```bash
+# Reload systemd to recognize the new service
+sudo systemctl daemon-reload
+
+# Enable auto-start on boot
+sudo systemctl enable teams-presence.service
+
+# Start the service now
+sudo systemctl start teams-presence.service
+
+# Check status
+sudo systemctl status teams-presence.service
+```
+
+**4. Useful commands:**
+```bash
+# View live logs
+sudo journalctl -u teams-presence.service -f
+
+# Restart the service
+sudo systemctl restart teams-presence.service
+
+# Stop the service
+sudo systemctl stop teams-presence.service
+
+# Disable auto-start
+sudo systemctl disable teams-presence.service
 ```
 
 ### 2. Windows PC Setup
@@ -117,20 +191,52 @@ powershell -ExecutionPolicy Bypass -File TeamsPushClient.ps1
 
 # Or specify parameters
 powershell -ExecutionPolicy Bypass -File TeamsPushClient.ps1 -RaspberryPiIP "192.168.1.100" -Port 8080 -PollInterval 5
+
+# Enable debug output for troubleshooting
+powershell -ExecutionPolicy Bypass -File TeamsPushClient.ps1 -Verbose
 ```
 
 **Parameters:**
-- `-RaspberryPiIP`: IP address of your Raspberry Pi (default: 192.168.50.137)
-- `-Port`: Port number (default: 8080)
-- `-PollInterval`: Seconds between status checks (default: 5)
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `-RaspberryPiIP` | 192.168.50.137 | IP address of your Raspberry Pi |
+| `-Port` | 8080 | Port number for the Pi server |
+| `-PollInterval` | 5 | Seconds between status checks |
+| `-Verbose` | Off | Enable debug output for troubleshooting |
 
-**Optional: Create a shortcut:**
-1. Create a `.bat` file:
+**Client Display:**
+```
+  ╔══════════════════════════════════════════════════════════════════╗
+  ║              MS Teams Status Push Client                         ║
+  ╚══════════════════════════════════════════════════════════════════╝
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  Configuration                                                  │
+  ├─────────────────────────────────────────────────────────────────┤
+  │  Raspberry Pi:  192.168.50.137      Port: 8080                  │
+  │  Poll Interval: 5s                                              │
+  │  Connection:    Connected                                       │
+  └─────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────────────────────────
+  Monitoring Teams status... Press Ctrl+C to stop
+  ─────────────────────────────────────────────────────────────────
+
+  15:36:48  [OK]  Status: Available
+             -> Raspberry Pi [Connected]
+```
+
+**Auto-Start on Windows Login:**
+
+1. Create a `.bat` file (e.g., `StartTeamsMonitor.bat`):
 ```batch
 @echo off
-powershell -ExecutionPolicy Bypass -File "C:\path\to\TeamsPushClient.ps1" -RaspberryPiIP "192.168.1.100"
+powershell -ExecutionPolicy Bypass -WindowStyle Minimized -File "C:\path\to\TeamsPushClient.ps1" -RaspberryPiIP "192.168.1.100"
 ```
-2. Add to Startup folder for auto-launch
+
+2. Add to Windows Startup folder:
+   - Press `Win+R`, type `shell:startup`, press Enter
+   - Copy your `.bat` file to this folder
 
 ## Project Structure
 
@@ -169,18 +275,27 @@ MSTeams-Presence-Notify/
 ## Troubleshooting
 
 ### PowerShell Client
-- **Teams log not found**: Ensure Teams is running. The client checks both New Teams and Classic Teams log locations.
-- **Cannot connect to Pi**: Check firewall settings, ensure Pi is on the same network.
-- **Status always "Unknown"**: Run with `-Verbose` to see debug output and matched patterns.
+| Issue | Solution |
+|-------|----------|
+| Teams log not found | Ensure Teams is running. The client checks both New Teams and Classic Teams log locations. |
+| Cannot connect to Pi | Check firewall settings, verify Pi IP address, ensure Pi is on the same network. |
+| Status always "Unknown" | Run with `-Verbose` flag to see debug output and matched log patterns. |
+| Connection shows "Disconnected" | Verify the Pi server is running: `sudo systemctl status teams-presence.service` |
 
 ### Raspberry Pi
-- **LEDs not lighting**: Ensure Unicorn HAT is properly seated on GPIO. Run with `sudo`.
-- **Web dashboard not accessible**: Check firewall, ensure port 5000 is open.
-- **Permission denied**: The script requires sudo to access GPIO.
+| Issue | Solution |
+|-------|----------|
+| LEDs not lighting | Ensure Unicorn HAT is properly seated on GPIO. Script must run with `sudo`. |
+| Web dashboard not accessible | Check firewall (`sudo ufw allow 5000`), verify port 5000 is enabled in config. |
+| Permission denied | The script requires root to access GPIO: `sudo python3 teams_status_integrated_push.py` |
+| Service won't start | Check logs: `sudo journalctl -u teams-presence.service -n 50` |
 
 ### Network
-- **Connection refused**: Verify Pi IP address and port 8080 is open.
-- **No status updates**: Check that both devices are on the same network segment.
+| Issue | Solution |
+|-------|----------|
+| Connection refused | Verify Pi IP address (`hostname -I`) and ensure port 8080 is open. |
+| No status updates | Ensure both devices are on the same network/VLAN. Check Windows firewall outbound rules. |
+| Intermittent connection | Check for IP address changes. Consider setting a static IP on the Pi. |
 
 ## How It Works
 
