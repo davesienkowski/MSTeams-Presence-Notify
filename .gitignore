@@ -1,4 +1,16 @@
+# =====================================================
+# MSTeams-Presence-Notify .gitignore
+# =====================================================
+
+# =====================================================
+# Archive (development history, not needed for deployment)
+# =====================================================
+Archive/
+**/Archive/
+
+# =====================================================
 # Python
+# =====================================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -24,12 +36,29 @@ wheels/
 venv/
 ENV/
 env/
+.venv/
 
-# Environment Variables
-.env
+# =====================================================
+# Configuration files (contain IPs, passwords, etc.)
+# =====================================================
+config_push.yaml
+config.yaml
+**/config_push.yaml
+**/config.yaml
+*.yaml.backup
+*.yaml.local
 secrets.py
+.env
 
-# IDE
+# =====================================================
+# Status data files
+# =====================================================
+current_status.json
+status_history.json
+
+# =====================================================
+# IDE and Editor
+# =====================================================
 .vscode/
 .idea/
 *.swp
@@ -37,42 +66,39 @@ secrets.py
 *~
 *.code-workspace
 
-# OS
+# =====================================================
+# OS Files
+# =====================================================
 .DS_Store
 Thumbs.db
+desktop.ini
 
+# =====================================================
 # Logs
+# =====================================================
 *.log
 
-# PyPortal specific
-pyportal/.fseventsd/
-pyportal/.metadata_never_index
-pyportal/.Trashes
+# =====================================================
+# AI/Development Tools
+# =====================================================
+.serena/
+.planning/
+.cursor/
+.claude/
+memory-bank/
 
+# =====================================================
+# .NET build artifacts (if any dotnet remnants)
+# =====================================================
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+
+# =====================================================
 # Testing
+# =====================================================
 .pytest_cache/
 .coverage
 htmlcov/
-
-# Serena
-.serena/
-nul
-
-# Configuration files (may contain IP addresses, passwords, etc.)
-config.yaml
-config_push.yaml
-**/config.yaml
-**/config_push.yaml
-*.yaml.backup
-*.yaml.local
-
-# Status data
-current_status.json
-status_history.json
-
-#Development
-Archive/
-docs/
-raspberry_pi_unicorn/docs/
-raspberry_pi_unicorn/Archive/
-powershell_service/Archive/
