@@ -175,17 +175,32 @@ function Draw-UI {
     $connColor = if ($Connected) { "Green" } else { "Red" }
     $connText = if ($Connected) { "Connected" } else { "Disconnected" }
 
-    Clear-Host
-    $script:UIStartRow = [Console]::CursorTop
+    # Ensure buffer is large enough (need ~35 rows)
+    try {
+        $requiredHeight = 40
+        $currentBuffer = $Host.UI.RawUI.BufferSize
+        if ($currentBuffer.Height -lt $requiredHeight) {
+            $newBuffer = $currentBuffer
+            $newBuffer.Height = $requiredHeight
+            $Host.UI.RawUI.BufferSize = $newBuffer
+        }
+    } catch { }
 
-    # Header
+    Clear-Host
+
+    # After Clear-Host, cursor is at row 0
+    # We'll track row numbers as we go using a counter
+    $row = 0
+
+    # Header (rows 0-4)
     Write-Host ""
     Write-Host "  ======================================================================" -ForegroundColor Cyan
     Write-Host "                    MS Teams Status Push Client" -ForegroundColor Cyan
     Write-Host "  ======================================================================" -ForegroundColor Cyan
     Write-Host ""
+    $row = 5
 
-    # Config section
+    # Config section (rows 5-9)
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
     Write-Host "   Configuration" -ForegroundColor White
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
@@ -196,8 +211,9 @@ function Draw-UI {
     Write-Host "   Poll Interval: " -NoNewline -ForegroundColor DarkGray
     Write-Host "${PollInterval}s" -ForegroundColor White
     Write-Host ""
+    $row = 13
 
-    # Services section
+    # Services section (rows 13-19)
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
     Write-Host "   Raspberry Pi Services" -ForegroundColor White
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
@@ -210,23 +226,25 @@ function Draw-UI {
     Write-Host "   Notifications:   " -NoNewline -ForegroundColor DarkGray
     Write-Host "ntfy.sh (configure on Pi)" -ForegroundColor DarkGray
     Write-Host ""
+    $row = 22
 
-    # Current Status section
+    # Current Status section (rows 22-26)
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
     Write-Host "   Current Status" -ForegroundColor White
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
-    $script:StatusLineRow = [Console]::CursorTop
+    $script:StatusLineRow = 25
     Write-Host "   " -NoNewline
     Write-Host "$emoji " -NoNewline -ForegroundColor $statusColor
     Write-Host $CurrentStatus.PadRight(15) -NoNewline -ForegroundColor $statusColor
     Write-Host "Last update: $LastUpdateTime" -ForegroundColor DarkGray
     Write-Host ""
+    $row = 27
 
-    # History section
+    # History section (rows 27-34)
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
     Write-Host "   Recent Changes" -ForegroundColor White
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
-    $script:HistoryStartRow = [Console]::CursorTop
+    $script:HistoryStartRow = 30
     for ($i = 0; $i -lt $script:MaxHistory; $i++) {
         if ($i -lt $script:StatusHistory.Count) {
             $entry = $script:StatusHistory[$script:StatusHistory.Count - 1 - $i]
@@ -247,10 +265,11 @@ function Draw-UI {
         }
     }
     Write-Host ""
+    $row = 36
 
-    # Connection section
+    # Connection section (rows 36-38)
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
-    $script:ConnectionRow = [Console]::CursorTop
+    $script:ConnectionRow = 37
     Write-Host "   Connection: " -NoNewline -ForegroundColor DarkGray
     Write-Host $connText.PadRight(14) -NoNewline -ForegroundColor $connColor
     Write-Host "Updates sent: " -NoNewline -ForegroundColor DarkGray
@@ -258,11 +277,9 @@ function Draw-UI {
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
     Write-Host ""
 
-    # Footer with countdown
-    $script:FooterRow = [Console]::CursorTop
+    # Footer with countdown (row 40)
+    $script:FooterRow = 40
     Write-Host "  Last poll: $LastPollTime  |  Next in: $($Countdown.ToString().PadLeft(2))s  |  Ctrl+C to stop" -ForegroundColor DarkGray
-
-    $script:TotalUIRows = [Console]::CursorTop - $script:UIStartRow
 
     # Hide cursor
     [Console]::CursorVisible = $false
@@ -274,11 +291,12 @@ function Update-StatusLine {
     $emoji = $StatusEmoji[$Status]
     $color = $StatusDisplayColor[$Status]
 
-    [Console]::SetCursorPosition(0, $script:StatusLineRow)
-    Write-Host "   " -NoNewline
-    Write-Host "$emoji " -NoNewline -ForegroundColor $color
-    Write-Host $Status.PadRight(15) -NoNewline -ForegroundColor $color
-    Write-Host "Last update: $UpdateTime".PadRight(30) -ForegroundColor DarkGray
+    try {
+        [Console]::SetCursorPosition(0, $script:StatusLineRow)
+        Write-Host "   $emoji " -NoNewline -ForegroundColor $color
+        Write-Host $Status.PadRight(15) -NoNewline -ForegroundColor $color
+        Write-Host "Last update: $UpdateTime".PadRight(40) -ForegroundColor DarkGray
+    } catch { }
 }
 
 function Update-ConnectionLine {
@@ -287,42 +305,48 @@ function Update-ConnectionLine {
     $connColor = if ($Connected) { "Green" } else { "Red" }
     $connText = if ($Connected) { "Connected" } else { "Disconnected" }
 
-    [Console]::SetCursorPosition(0, $script:ConnectionRow)
-    Write-Host "   Connection: " -NoNewline -ForegroundColor DarkGray
-    Write-Host $connText.PadRight(14) -NoNewline -ForegroundColor $connColor
-    Write-Host "Updates sent: " -NoNewline -ForegroundColor DarkGray
-    Write-Host "$UpdatesSent".PadRight(10) -ForegroundColor White
+    try {
+        [Console]::SetCursorPosition(0, $script:ConnectionRow)
+        Write-Host "   Connection: " -NoNewline -ForegroundColor DarkGray
+        Write-Host $connText.PadRight(14) -NoNewline -ForegroundColor $connColor
+        Write-Host "Updates sent: " -NoNewline -ForegroundColor DarkGray
+        Write-Host "$UpdatesSent".PadRight(20) -ForegroundColor White
+    } catch { }
 }
 
 function Update-Footer {
     param([string]$PollTime, [int]$Countdown)
 
-    [Console]::SetCursorPosition(0, $script:FooterRow)
-    Write-Host "  Last poll: $PollTime  |  Next in: $($Countdown.ToString().PadLeft(2))s  |  Ctrl+C to stop     " -ForegroundColor DarkGray
+    try {
+        [Console]::SetCursorPosition(0, $script:FooterRow)
+        Write-Host "  Last poll: $PollTime  |  Next in: $($Countdown.ToString().PadLeft(2))s  |  Ctrl+C to stop     " -ForegroundColor DarkGray
+    } catch { }
 }
 
 function Update-HistorySection {
-    for ($i = 0; $i -lt $script:MaxHistory; $i++) {
-        [Console]::SetCursorPosition(0, $script:HistoryStartRow + $i)
+    try {
+        for ($i = 0; $i -lt $script:MaxHistory; $i++) {
+            [Console]::SetCursorPosition(0, $script:HistoryStartRow + $i)
 
-        if ($i -lt $script:StatusHistory.Count) {
-            $entry = $script:StatusHistory[$script:StatusHistory.Count - 1 - $i]
-            $hEmoji = $StatusEmoji[$entry.Status]
-            $hColor = $StatusDisplayColor[$entry.Status]
-            $hTime = $entry.Time.ToString("HH:mm:ss")
-            $sentText = if ($entry.Sent) { "[Sent]" } else { "[Failed]" }
-            $sentColor = if ($entry.Sent) { "Green" } else { "Red" }
+            if ($i -lt $script:StatusHistory.Count) {
+                $entry = $script:StatusHistory[$script:StatusHistory.Count - 1 - $i]
+                $hEmoji = $StatusEmoji[$entry.Status]
+                $hColor = $StatusDisplayColor[$entry.Status]
+                $hTime = $entry.Time.ToString("HH:mm:ss")
+                $sentText = if ($entry.Sent) { "[Sent]" } else { "[Failed]" }
+                $sentColor = if ($entry.Sent) { "Green" } else { "Red" }
 
-            Write-Host "   $hTime  " -NoNewline -ForegroundColor DarkGray
-            Write-Host "$hEmoji " -NoNewline -ForegroundColor $hColor
-            Write-Host $entry.Status.PadRight(14) -NoNewline -ForegroundColor $hColor
-            Write-Host "-> Pi " -NoNewline -ForegroundColor DarkGray
-            Write-Host $sentText.PadRight(15) -ForegroundColor $sentColor
+                Write-Host "   $hTime  " -NoNewline -ForegroundColor DarkGray
+                Write-Host "$hEmoji " -NoNewline -ForegroundColor $hColor
+                Write-Host $entry.Status.PadRight(14) -NoNewline -ForegroundColor $hColor
+                Write-Host "-> Pi " -NoNewline -ForegroundColor DarkGray
+                Write-Host $sentText.PadRight(30) -ForegroundColor $sentColor
+            }
+            else {
+                Write-Host "   -".PadRight(70) -ForegroundColor DarkGray
+            }
         }
-        else {
-            Write-Host "   -".PadRight(60) -ForegroundColor DarkGray
-        }
-    }
+    } catch { }
 }
 
 function Add-StatusToHistory {
