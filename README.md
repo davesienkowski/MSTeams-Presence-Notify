@@ -231,8 +231,10 @@ powershell -ExecutionPolicy Bypass -File TeamsPushClient.ps1 -Verbose
   ----------------------------------------------------------------------
    Raspberry Pi Services
   ----------------------------------------------------------------------
-   Web Dashboard:  http://192.168.50.137:5000
-   Status API:     http://192.168.50.137:8080/status
+   Web Dashboard:   http://192.168.50.137:5000
+   Status API:      http://192.168.50.137:8080/status
+   Home Assistant:  MQTT (configure on Pi)
+   Notifications:   ntfy.sh (configure on Pi)
 
   ----------------------------------------------------------------------
    Current Status

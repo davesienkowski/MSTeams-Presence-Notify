@@ -201,10 +201,14 @@ function Draw-UI {
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
     Write-Host "   Raspberry Pi Services" -ForegroundColor White
     Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
-    Write-Host "   Web Dashboard:  " -NoNewline -ForegroundColor DarkGray
+    Write-Host "   Web Dashboard:   " -NoNewline -ForegroundColor DarkGray
     Write-Host "http://${RaspberryPiIP}:5000" -ForegroundColor Cyan
-    Write-Host "   Status API:     " -NoNewline -ForegroundColor DarkGray
+    Write-Host "   Status API:      " -NoNewline -ForegroundColor DarkGray
     Write-Host "http://${RaspberryPiIP}:${Port}/status" -ForegroundColor Cyan
+    Write-Host "   Home Assistant:  " -NoNewline -ForegroundColor DarkGray
+    Write-Host "MQTT (configure on Pi)" -ForegroundColor DarkGray
+    Write-Host "   Notifications:   " -NoNewline -ForegroundColor DarkGray
+    Write-Host "ntfy.sh (configure on Pi)" -ForegroundColor DarkGray
     Write-Host ""
 
     # Current Status section
