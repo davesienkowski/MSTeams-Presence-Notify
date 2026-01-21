@@ -1,5 +1,0 @@
-# Python dependencies for Teams BLE Transmitter
-
-bleak>=0.21.0      # Bluetooth Low Energy library
-psutil>=5.9.0      # Process and system utilities
-asyncio            # Async I/O support (built-in, but listed for clarity)

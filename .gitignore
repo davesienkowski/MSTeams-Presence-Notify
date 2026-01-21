@@ -35,6 +35,7 @@ secrets.py
 *.swp
 *.swo
 *~
+*.code-workspace
 
 # OS
 .DS_Store
@@ -68,3 +69,10 @@ config_push.yaml
 # Status data
 current_status.json
 status_history.json
+
+#Development
+Archive/
+docs/
+raspberry_pi_unicorn/docs/
+raspberry_pi_unicorn/Archive/
+powershell_service/Archive/
