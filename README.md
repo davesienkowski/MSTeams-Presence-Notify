@@ -2,26 +2,9 @@
 
 Display your Microsoft Teams status on a Raspberry Pi with Unicorn HAT (8x8 RGB LED matrix). Uses a push architecture where your PC monitors Teams logs and pushes status updates to the Raspberry Pi.
 
-## Architecture
-
-```mermaid
-flowchart TB
-    subgraph Client["Client PC (Windows/Mac/Linux)"]
-        Teams[MS Teams]
-        Script[Push Client Script]
-        Teams -->|Writes logs| Script
-    end
-
-    Script -->|HTTP POST| Server
-
-    subgraph Pi["Raspberry Pi"]
-        Server[teams_status_integrated_push.py]
-        Server --> LEDs[Unicorn HAT LEDs]
-        Server -.->|Optional| Web[Web Dashboard]
-        Server -.->|Optional| Notify[Notifications]
-        Server -.->|Optional| HA[Home Assistant]
-    end
-```
+<p align="center">
+  <img width="445" height="506" alt="image" src="https://github.com/user-attachments/assets/c0b5a27a-c7b1-4ba4-aeef-cf2baa733679" />
+</p>
 
 **Key Benefits:**
 - No Microsoft Graph API required
@@ -492,6 +475,27 @@ curl http://<pi-ip>:8080/status
   "color": "#FF0000",
   "timestamp": "2024-01-15T10:30:00"
 }
+```
+
+## Architecture
+
+```mermaid
+flowchart TB
+    subgraph Client["Client PC (Windows/Mac/Linux)"]
+        Teams[MS Teams]
+        Script[Push Client Script]
+        Teams -->|Writes logs| Script
+    end
+
+    Script -->|HTTP POST| Server
+
+    subgraph Pi["Raspberry Pi"]
+        Server[teams_status_integrated_push.py]
+        Server --> LEDs[Unicorn HAT LEDs]
+        Server -.->|Optional| Web[Web Dashboard]
+        Server -.->|Optional| Notify[Notifications]
+        Server -.->|Optional| HA[Home Assistant]
+    end
 ```
 
 ## Troubleshooting
